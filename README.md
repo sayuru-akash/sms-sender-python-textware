@@ -728,33 +728,34 @@ tail -f logs/sms_sender_*.log
 
 ---
 
-## 📞 Support
+## Troubleshooting
 
-**For issues:**
+If something is not working as expected, start with these checks:
 
-1. Check `logs/sms_sender_*.log` for detailed errors
-2. Review `reports/sms_report_*.json` for campaign status
-3. Run `python main.py --test` to verify API works
-4. Verify internet connection and firewall
-5. Check `.env` credentials are correct
+1. Review `logs/sms_sender_*.log` for request, retry, and error details
+2. Inspect `reports/sms_report_*.json` to confirm which recipients succeeded, failed, or were skipped
+3. Run `python main.py --test` to verify credentials and API connectivity before a full campaign
+4. Confirm `.env` contains valid Text-Ware credentials and sender configuration
+5. Reinstall dependencies with `pip install --upgrade -r requirements.txt` if your environment is out of sync
 
-**Common solutions:**
+For Streamlit-specific issues, restart the app with:
 
-- Clear old logs: `rm logs/*`
-- Clear old reports: `rm reports/*`
-- Reinstall dependencies: `pip install --upgrade -r requirements.txt`
-- Restart terminal/Python
+```bash
+python main.py --streamlit
+```
+
+For test execution and local verification, use:
+
+```bash
+python -m pytest --cov=. --cov-report=term-missing
+```
 
 ---
 
-## 🎉
+## Repository
 
-Everything is configured and ready to use.
-
-**Next step:** Choose your preferred method:
-
+- GitHub: [sayuru-akash/sms-sender-python-textware](https://github.com/sayuru-akash/sms-sender-python-textware)
 - Dashboard: `python main.py --streamlit`
-- CLI: `python main.py --test`
-- Menu: `python quickstart.py`
-
-**Start sending SMS campaigns now!** 📱✉️
+- CLI test send: `python main.py --test`
+- Full campaign: `python main.py --bulk`
+- Interactive menu: `python quickstart.py`
