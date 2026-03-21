@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 from datetime import datetime
-from sms_sender import SMSSender, get_sms_message
+from sms_sender import SMSSender, get_sms_message, limit_name_to_two_words
 import logging
 
 # Page configuration
@@ -124,15 +124,17 @@ def tab_recipients():
                     # Always add to recipients.csv
                     recipients_df = load_recipients("recipients.csv") if Path(
                         "recipients.csv").exists() else pd.DataFrame()
+                    # Limit name to first 2 words
+                    limited_name = limit_name_to_two_words(name)
                     new_row = pd.DataFrame({
-                        "name": [name],
+                        "name": [limited_name],
                         "email": [email],
                         "contact_number": [phone]
                     })
                     recipients_df = pd.concat(
                         [recipients_df, new_row], ignore_index=True)
                     recipients_df.to_csv("recipients.csv", index=False)
-                    st.success(f"✓ {name} added successfully!")
+                    st.success(f"✓ {limited_name} added successfully!")
                     st.session_state.selected_csv = "recipients.csv"
                     st.rerun()
                 except Exception as e:

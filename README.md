@@ -31,6 +31,7 @@ Sends personalized SMS messages to recipients from CSV files using the Text-Ware
 - ✅ Flexible CSV selection (sample or uploaded)
 - ✅ Single & bulk SMS sending
 - ✅ Automatic name personalization {name}
+- ✅ Smart name handling - limits to first 2 words
 - ✅ Rate limiting (adjustable) - prevents API overload
 - ✅ Automatic retry (3 attempts) - handles failures
 - ✅ Detailed logging - all events recorded
@@ -164,9 +165,16 @@ Jane Smith,jane@example.com,0768765432
 
 **Requirements:**
 
-- **name**: Required for personalization
+- **name**: Required for personalization (automatically limited to first 2 words)
 - **email**: Required for records
 - **contact_number**: Required for SMS (format: 07XXXXXXXX for Sri Lanka or international format)
+
+**Name Handling:**
+
+- Names with more than 2 words are automatically limited to the first 2 words
+- Example: "Muhammad Abdullah Hassan" → "Muhammad Abdullah"
+- This applies to both uploaded CSVs and manually added recipients
+- Prevents long names in personalization
 
 ### File Selection at Campaign Time
 
