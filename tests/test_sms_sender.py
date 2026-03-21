@@ -440,6 +440,30 @@ def test_get_sms_message_contains_personalization_placeholder():
     assert "Zoom" in message
 
 
+def test_get_sms_message_reads_from_template_file(tmp_path):
+    template_path = tmp_path / "message_template.txt"
+    template_path.write_text("Hello {name}\nFrom file", encoding="utf-8")
+
+    message = sms_sender.get_sms_message(template_path)
+
+    assert message == "Hello {name}\nFrom file"
+
+
+def test_get_sms_message_falls_back_when_template_file_missing(tmp_path):
+    message = sms_sender.get_sms_message(tmp_path / "missing_template.txt")
+
+    assert message == sms_sender.DEFAULT_MESSAGE_TEMPLATE
+
+
+def test_get_sms_message_falls_back_when_template_file_empty(tmp_path):
+    template_path = tmp_path / "message_template.txt"
+    template_path.write_text("   \n", encoding="utf-8")
+
+    message = sms_sender.get_sms_message(template_path)
+
+    assert message == sms_sender.DEFAULT_MESSAGE_TEMPLATE
+
+
 def test_sms_sender_main_success(monkeypatch, sms_env):
     class FakeSender:
         def send_bulk_sms(self, recipients_file, message):

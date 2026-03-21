@@ -63,6 +63,7 @@ sms-sender-python-textware/
 ├── .env                   SMS credentials (NOT committed - see .env.sample)
 ├── .env.sample            Environment template (reference)
 ├── sample-recipients.csv  Sample data (always available)
+├── message_template.txt   Default SMS template (editable)
 ├── recipients.csv         Optional saved recipient list
 ├── requirements.txt       Python dependencies
 ├── pytest.ini             Pytest configuration
@@ -259,6 +260,8 @@ Two options available:
 
 **Default Template:**
 
+The default SMS text is loaded from `message_template.txt`.
+
 ```
 Dear Student, {name}
 
@@ -296,15 +299,15 @@ SITC Campus X CodeZela
 - Sending from the dashboard uses the edited message directly without rewriting Python files
 - This is the recommended way to adjust a campaign message before sending
 
-**Or edit the default template in code:**
-Edit `sms_sender.py`, function `get_sms_message()`:
+**Or edit the default template file:**
 
-```python
-def get_sms_message() -> str:
-    return """Your custom message
-    with {name} for personalization
-    """
+```text
+message_template.txt
 ```
+
+- This controls the default message used by the CLI and by new Streamlit sessions
+- Streamlit message edits do not rewrite this file
+- Edit this file only when you want to change the default template for future runs
 
 ---
 
@@ -600,7 +603,7 @@ New Person,email@example.com,07XXXXXXXX
 ### Change Message
 
 - Recommended: edit the message directly in the Streamlit **Campaigns** tab
-- Optional: edit `sms_sender.py`, function `get_sms_message()`, if you want to change the default template shown when the app starts
+- Optional: edit `message_template.txt` if you want to change the default template shown in new app sessions and used by the CLI
 
 ### Adjust Speed
 
@@ -650,8 +653,8 @@ Recommended path:
 Optional default-template edit:
 
 ```bash
-# Edit sms_sender.py if needed
-nano sms_sender.py
+# Edit the default message template if needed
+nano message_template.txt
 ```
 
 **Step 3: Send test SMS**

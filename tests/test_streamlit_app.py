@@ -110,6 +110,15 @@ def test_recipients_summary_and_build_message_stats():
     assert stats["has_placeholder"] is True
 
 
+def test_ensure_session_state_initializes_draft_from_template(monkeypatch):
+    streamlit_app.st.session_state.clear()
+    monkeypatch.setattr(streamlit_app, "get_sms_message", lambda: "Template from file")
+
+    streamlit_app.ensure_session_state()
+
+    assert streamlit_app.st.session_state["draft_message"] == "Template from file"
+
+
 def test_app_uses_imported_recipients_as_active_source():
     at = AppTest.from_file(str(Path(streamlit_app.__file__)))
     at.session_state["imported_recipients"] = pd.DataFrame(

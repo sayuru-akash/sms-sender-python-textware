@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from sms_sender import (
+    MESSAGE_TEMPLATE_FILE,
     SMSSender,
     get_sms_message,
     is_valid_email,
@@ -713,12 +714,18 @@ def render_campaign_tab(current_file, recipients_df):
     with left:
         with st.container(border=True):
             st.subheader("Message")
+            st.caption(
+                f"Edits here stay in this app session. To change the default for future sessions, edit `{MESSAGE_TEMPLATE_FILE.name}`."
+            )
             message = st.text_area(
                 "SMS text",
                 key="draft_message",
                 height=240,
                 help="Use {name} for personalization.",
             )
+            if st.button("Reset to default template", key="reset_draft_message"):
+                st.session_state.draft_message = get_sms_message()
+                st.rerun()
             stats = build_message_stats(message)
             metric_row = st.columns(3)
             with metric_row[0]:

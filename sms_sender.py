@@ -34,6 +34,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+DEFAULT_MESSAGE_TEMPLATE = """Dear Student, {name}
+
+We're excited to announce that the CCA Bootcamp Programs Inauguration Ceremony will be held today.
+
+This will be the official launch session for our bootcamp programs under BYOW, DDIGITAL, RANDS, and VAT0. We warmly invite you to join us and be part of this important beginning.
+
+Date: 22 March 2026
+Time: 9.00 PM
+Platform: Zoom
+
+Join Link: https://us06web.zoom.us/j/85143454719?pwd=ppwZBbAjxq2v3mr6td368TpiFvZa02.1
+
+Passcode: 331423
+
+We look forward to having you with us tonight.
+
+SITC Campus X CodeZela"""
+MESSAGE_TEMPLATE_FILE = Path(__file__).with_name("message_template.txt")
+
 
 def limit_name_to_two_words(name: str) -> str:
     """Limit name to first 2 words only"""
@@ -615,26 +634,26 @@ class SMSSender:
             raise
 
 
-def get_sms_message() -> str:
-    """Get the SMS message about CCA Bootcamp"""
+def load_message_template(template_path: str | Path | None = None) -> str:
+    """Load the default message template from disk, with a safe fallback."""
+    target_path = Path(template_path) if template_path else MESSAGE_TEMPLATE_FILE
 
-    return """Dear Student, {name}
+    try:
+        message = target_path.read_text(encoding="utf-8").strip()
+        if message:
+            return message
+        logger.warning("Message template file is empty: %s. Falling back to built-in default.", target_path)
+    except FileNotFoundError:
+        logger.warning("Message template file not found: %s. Falling back to built-in default.", target_path)
+    except OSError as exc:
+        logger.warning("Failed to read message template file %s: %s. Falling back to built-in default.", target_path, exc)
 
-We're excited to announce that the CCA Bootcamp Programs Inauguration Ceremony will be held today.
+    return DEFAULT_MESSAGE_TEMPLATE
 
-This will be the official launch session for our bootcamp programs under BYOW, DDIGITAL, RANDS, and VAT0. We warmly invite you to join us and be part of this important beginning.
 
-Date: 22 March 2026
-Time: 9.00 PM
-Platform: Zoom
-
-Join Link: https://us06web.zoom.us/j/85143454719?pwd=ppwZBbAjxq2v3mr6td368TpiFvZa02.1
-
-Passcode: 331423
-
-We look forward to having you with us tonight.
-
-SITC Campus X CodeZela"""
+def get_sms_message(template_path: str | Path | None = None) -> str:
+    """Get the default SMS message template."""
+    return load_message_template(template_path)
 
 
 def main():
