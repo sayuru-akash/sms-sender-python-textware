@@ -63,7 +63,7 @@ sms-sender-python-textware/
 ├── .env                   SMS credentials (NOT committed - see .env.sample)
 ├── .env.sample            Environment template (reference)
 ├── sample-recipients.csv  Sample data (always available)
-├── recipients.csv         Uploaded recipients (created on upload)
+├── recipients.csv         Optional saved recipient list
 ├── requirements.txt       Python dependencies
 ├── pytest.ini             Pytest configuration
 ├── tests/                 Automated test suite
@@ -101,7 +101,7 @@ python -m streamlit run streamlit_app.py
 
 - **🔄 CSV File Selection**: Switch between:
   - `sample-recipients.csv` (default, always available)
-  - `recipients.csv` (your uploaded custom file)
+  - `recipients.csv` (saved custom list, if you choose to persist one)
   - `Imported (...)` (temporary in-memory upload)
 - **📊 View Recipients**: Table showing all current recipients
 - **➕ Add Recipient**: Single form entry for one person
@@ -162,15 +162,15 @@ result = sender.send_sms("0768622302", message, "Name", "email@example.com")
 
 - `sample-recipients.csv` is always available
 - Contains: Sayuru Akash, test@gmail.com, 0777123456
-- Good for testing
+- Best option for first-time setup and quick verification
 
 ### Upload Custom Recipients
 
 1. Go to **Recipients Tab**
 2. Click **Upload Recipients CSV**
 3. Select your CSV file
-4. Choose **Use now** to work from the cleaned upload immediately without saving a file
-5. Or choose **Save as recipients.csv** if you want it persisted on disk
+4. Choose **Use now** to work from the cleaned upload immediately without writing any file
+5. Choose **Save as recipients.csv** only if you want the cleaned list persisted on disk
 
 ### CSV Format Required
 
@@ -249,9 +249,9 @@ Two options available:
    - Good for testing
 
 2. **recipients.csv** (your uploads)
-   - Created when you upload
+   - Optional saved list on disk
    - Persists between sessions
-   - Can add/edit through dashboard
+   - Can be edited through the dashboard or manually in a text editor / spreadsheet tool
 
 ---
 
@@ -291,10 +291,12 @@ SITC Campus X CodeZela
 **Customize in Streamlit Dashboard:**
 
 - Go to **Campaigns > Message Template**
-- Edit text directly in web UI
-- Settings apply immediately
+- Edit text directly in the web UI
+- The edited message is kept in Streamlit session state for the current app session
+- Sending from the dashboard uses the edited message directly without rewriting Python files
+- This is the recommended way to adjust a campaign message before sending
 
-**Or edit in code:**
+**Or edit the default template in code:**
 Edit `sms_sender.py`, function `get_sms_message()`:
 
 ```python
@@ -583,7 +585,12 @@ Before first use:
 
 ### Add New Recipients
 
-Edit `recipients.csv` and add rows:
+Best option in the dashboard:
+
+- Use **Recipients > Upload CSV > Use now** for a temporary in-memory list
+- Use **Save as recipients.csv** only when you want a reusable saved list
+
+Manual file edit also works when needed. Edit `recipients.csv` and add rows:
 
 ```csv
 name,email,contact_number
@@ -592,7 +599,8 @@ New Person,email@example.com,07XXXXXXXX
 
 ### Change Message
 
-Edit `sms_sender.py`, function `get_sms_message()`
+- Recommended: edit the message directly in the Streamlit **Campaigns** tab
+- Optional: edit `sms_sender.py`, function `get_sms_message()`, if you want to change the default template shown when the app starts
 
 ### Adjust Speed
 
@@ -618,7 +626,14 @@ tail -f logs/sms_sender_*.log
 
 ## 📊 Example Workflow
 
-**Step 1: Add recipients**
+**Step 1: Choose recipients**
+
+Recommended path:
+
+- Start with `sample-recipients.csv` for a quick end-to-end test
+- Or upload your own CSV and click **Use now** to work without writing a file
+
+Optional saved path:
 
 ```bash
 # Edit recipients.csv with your recipients
@@ -626,6 +641,13 @@ nano recipients.csv
 ```
 
 **Step 2: Customize message** (optional)
+
+Recommended path:
+
+- Edit the draft message directly in the Streamlit **Campaigns** tab
+- This uses the updated message immediately without rewriting files
+
+Optional default-template edit:
 
 ```bash
 # Edit sms_sender.py if needed
@@ -713,7 +735,7 @@ tail -f logs/sms_sender_*.log
    python main.py --streamlit
    ```
 
-4. **Edit `recipients.csv`** with your recipient data, or start with `sample-recipients.csv`
+4. **Choose recipients**: start with `sample-recipients.csv`, upload a CSV and click **Use now**, or edit `recipients.csv` if you want a saved list
 
 5. **Send SMS:**
 
@@ -759,3 +781,32 @@ python -m pytest --cov=. --cov-report=term-missing
 - CLI test send: `python main.py --test`
 - Full campaign: `python main.py --bulk`
 - Interactive menu: `python quickstart.py`
+
+---
+
+## Issues
+
+For bugs, regressions, or feature requests, use the GitHub issue tracker:
+
+- Issues: [github.com/sayuru-akash/sms-sender-python-textware/issues](https://github.com/sayuru-akash/sms-sender-python-textware/issues)
+
+When reporting a problem, include:
+
+- the command you ran
+- whether you used `sample-recipients.csv`, `recipients.csv`, or an imported in-memory list
+- the relevant error from `logs/sms_sender_*.log`
+- the related report file from `reports/` if a campaign started
+
+---
+
+## Contributing
+
+Contributions are welcome through GitHub pull requests:
+
+1. Fork the repository
+2. Create a branch for your change
+3. Run `pytest --cov=. --cov-report=term-missing`
+4. Update documentation when behavior changes
+5. Open a pull request with a clear summary
+
+Keep changes focused, avoid committing `.env`, and include tests for any behavior change in the sender, CLI, or Streamlit app.
