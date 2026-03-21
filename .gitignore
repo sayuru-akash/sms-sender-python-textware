@@ -1,0 +1,225 @@
+# ============================================
+# SMS Campaign Manager - Git Ignore File
+# ============================================
+
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ============================================
+# Virtual Environments
+# ============================================
+.venv
+venv/
+ENV/
+env/
+.env
+env.bak/
+venv.bak/
+.venv/
+
+# ============================================
+# IDEs and Editors
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+.atom/
+.vscode-server/
+.devcontainers/
+
+# ============================================
+# macOS
+# ============================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.CFUserTextEncoding
+.cache
+.Trash
+.TemporaryItems
+
+# ============================================
+# Project-Specific Files
+# ============================================
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+credentials.json
+secrets.json
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Reports and outputs
+reports/
+output/
+*.json.backup
+*.csv.backup
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+.~*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# ============================================
+# OS-Specific
+# ============================================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.directory
+.Xauthority
+.Xdefaults
+
+# ============================================
+# IDE Specific
+# ============================================
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+# VS Code
+.vscode/
+*.code-workspace
+launch.json
+settings.json
+extensions.json
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+.vim/
+.vimrc
+.viminfo
+*.vim
+
+# Emacs
+*~
+.#*
+*/.emacs.d/
+auto-save-list/
+tramp
+
+# ============================================
+# Package Managers
+# ============================================
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+requirements-lock.txt
+
+# Pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# ============================================
+# Testing
+# ============================================
+
+# pytest
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+junit.xml
+coverage.xml
+
+# unittest
+.unittest.cfg
+
+# ============================================
+# System Files
+# ============================================
+
+.env.swp
+.env.swo
+*.orig
+*.rej
+*.patch
+
+# ============================================
+# Project Output Files (can be regenerated)
+# ============================================
+
+# Keep these commented out if you want to version control them
+# Uncomment to ignore:
+# logs/*.log
+# reports/*.json
+
+# ============================================
+# Do NOT ignore these files
+# ============================================
+# !.env.sample
+# !.gitignore
+# !README.md
+# !requirements.txt
+# !recipients.csv (only if it's template/test data)
+
