@@ -33,6 +33,15 @@ def test_get_available_csvs_includes_imported_source(tmp_path, monkeypatch):
     assert ("Imported (demo.csv)", "__memory__") in options
 
 
+def test_resolve_csv_path_uses_bundled_sample_when_local_file_missing(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    resolved = streamlit_app.resolve_csv_path(streamlit_app.DEFAULT_SAMPLE_CSV)
+
+    assert resolved == streamlit_app.BUNDLED_SAMPLE_CSV
+    assert resolved.exists()
+
+
 def test_get_current_recipients_falls_back_from_missing_memory_source(tmp_path, monkeypatch):
     sample_csv = tmp_path / "sample-recipients.csv"
     sample_csv.write_text(
@@ -158,11 +167,12 @@ def test_app_add_recipient_to_imported_memory_source():
     assert imported_df.iloc[-1]["contact_number"] == "94771234568"
 
 
-def test_app_shows_no_csv_found_when_no_sources_exist(tmp_path, monkeypatch):
+def test_app_uses_bundled_sample_when_no_local_csv_exists(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     at = AppTest.from_file(str(Path(streamlit_app.__file__)))
     at.run()
-    assert any("No CSV found." in warning.value for warning in at.warning)
+    assert at.session_state["csv_selector"] == "Sample"
+    assert at.metric[0].value == "Sample"
 
 
 def test_app_reports_missing_columns_for_selected_file(tmp_path, monkeypatch):

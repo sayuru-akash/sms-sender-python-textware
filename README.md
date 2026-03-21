@@ -62,9 +62,10 @@ sms-sender-python-textware/
 ├── quickstart.py          Menu system
 ├── .env                   SMS credentials (NOT committed - see .env.sample)
 ├── .env.sample            Environment template (reference)
-├── sample-recipients.csv  Sample data (always available)
-├── message_template.txt   Default SMS template (editable)
 ├── recipients.csv         Optional saved recipient list
+├── resources/
+│   ├── message_template.txt   Default SMS template (editable)
+│   └── sample-recipients.csv  Bundled sample data
 ├── requirements.txt       Python dependencies
 ├── pytest.ini             Pytest configuration
 ├── tests/                 Automated test suite
@@ -101,7 +102,7 @@ python -m streamlit run streamlit_app.py
 **1️⃣ Recipients Tab**
 
 - **🔄 CSV File Selection**: Switch between:
-  - `sample-recipients.csv` (default, always available)
+  - `Sample` (default, backed by bundled sample data)
   - `recipients.csv` (saved custom list, if you choose to persist one)
   - `Imported (...)` (temporary in-memory upload)
 - **📊 View Recipients**: Table showing all current recipients
@@ -161,7 +162,7 @@ result = sender.send_sms("0768622302", message, "Name", "email@example.com")
 
 ### Using Sample Recipients (Default)
 
-- `sample-recipients.csv` is always available
+- `resources/sample-recipients.csv` is bundled with the app and always available through the Sample source
 - Contains: Sayuru Akash, test@gmail.com, 0777123456
 - Best option for first-time setup and quick verification
 
@@ -215,7 +216,7 @@ Upload behavior:
 
 - Use sidebar selector to choose which CSV to use
 - Shows recipient count for selected file
-- Defaults to `sample-recipients.csv`
+- Defaults to `Sample`
 - Automatically switches to uploaded file when created
 
 ---
@@ -244,9 +245,10 @@ SMS_API_URL=https://msg.text-ware.com/send_sms.php
 
 Two options available:
 
-1. **sample-recipients.csv** (default)
+1. **Sample source** (default)
    - Built-in test data
    - Always available
+   - Backed by `resources/sample-recipients.csv`
    - Good for testing
 
 2. **recipients.csv** (your uploads)
@@ -260,7 +262,7 @@ Two options available:
 
 **Default Template:**
 
-The default SMS text is loaded from `message_template.txt`.
+The default SMS text is loaded from `resources/message_template.txt`.
 
 ```
 Dear Student, {name}
@@ -302,7 +304,7 @@ SITC Campus X CodeZela
 **Or edit the default template file:**
 
 ```text
-message_template.txt
+resources/message_template.txt
 ```
 
 - This controls the default message used by the CLI and by new Streamlit sessions
@@ -475,7 +477,7 @@ cat .gitignore | grep -E "\.env|venv"  # Should find both
 | **Streamlit not starting**   | Ensure venv is activated: `source venv/bin/activate`                |
 | **Module not found errors**  | Install dependencies: `pip install -r requirements.txt`             |
 | **".env not found"**         | Create `.env` from `.env.sample` with your credentials              |
-| **No recipients showing**    | Ensure `sample-recipients.csv` exists or upload custom file         |
+| **No recipients showing**    | Use the bundled Sample source or upload a custom file               |
 | **API connection failed**    | Check internet, verify SMS credentials in `.env`                    |
 | **SMS not sending**          | Check phone format (07XXXXXXXX for Sri Lanka or full international) |
 | **Port 8501 already in use** | Stop the existing process with `lsof -ti:8501 | xargs kill -9`, or let Streamlit choose the next free port |
@@ -487,7 +489,7 @@ cat .gitignore | grep -E "\.env|venv"  # Should find both
 2. View logs: `cat logs/sms_sender_*.log`
 3. Check reports: `cat reports/sms_report_*.json | python -m json.tool`
 4. Test credentials: `echo $SMS_USERNAME` (should show username)
-5. Verify CSV: `head -5 sample-recipients.csv`
+5. Verify bundled sample: `head -5 resources/sample-recipients.csv`
 
 ---
 
@@ -577,7 +579,7 @@ pip install -r requirements.txt
 Before first use:
 
 - [ ] `.env` exists with SMS credentials
-- [ ] `sample-recipients.csv` exists, or upload/create `recipients.csv`
+- [ ] Bundled sample source is available, or upload/create `recipients.csv`
 - [ ] `pip install -r requirements.txt` completed
 - [ ] Internet connection working
 - [ ] Python 3.8+ installed
@@ -603,7 +605,7 @@ New Person,email@example.com,07XXXXXXXX
 ### Change Message
 
 - Recommended: edit the message directly in the Streamlit **Campaigns** tab
-- Optional: edit `message_template.txt` if you want to change the default template shown in new app sessions and used by the CLI
+- Optional: edit `resources/message_template.txt` if you want to change the default template shown in new app sessions and used by the CLI
 
 ### Adjust Speed
 
@@ -633,7 +635,7 @@ tail -f logs/sms_sender_*.log
 
 Recommended path:
 
-- Start with `sample-recipients.csv` for a quick end-to-end test
+- Start with the `Sample` source for a quick end-to-end test
 - Or upload your own CSV and click **Use now** to work without writing a file
 
 Optional saved path:
@@ -654,7 +656,7 @@ Optional default-template edit:
 
 ```bash
 # Edit the default message template if needed
-nano message_template.txt
+nano resources/message_template.txt
 ```
 
 **Step 3: Send test SMS**
@@ -688,7 +690,7 @@ tail -f logs/sms_sender_*.log
 
 ### How SMS Sending Works
 
-1. **Load recipients** from the selected CSV (`sample-recipients.csv` or `recipients.csv`)
+1. **Load recipients** from the selected source (`Sample`, `recipients.csv`, or an imported in-memory list)
 2. **Personalize message** - replace `{name}` with recipient name
 3. **Send SMS** via Text-Ware API
 4. **Rate limit** - wait 2 seconds before next SMS
@@ -738,7 +740,7 @@ tail -f logs/sms_sender_*.log
    python main.py --streamlit
    ```
 
-4. **Choose recipients**: start with `sample-recipients.csv`, upload a CSV and click **Use now**, or edit `recipients.csv` if you want a saved list
+4. **Choose recipients**: start with the `Sample` source, upload a CSV and click **Use now**, or edit `recipients.csv` if you want a saved list
 
 5. **Send SMS:**
 

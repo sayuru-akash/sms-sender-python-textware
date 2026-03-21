@@ -33,6 +33,8 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+APP_DIR = Path(__file__).resolve().parent
+RESOURCES_DIR = APP_DIR / "resources"
 
 DEFAULT_MESSAGE_TEMPLATE = """Dear Student, {name}
 
@@ -51,7 +53,8 @@ Passcode: 331423
 We look forward to having you with us tonight.
 
 SITC Campus X CodeZela"""
-MESSAGE_TEMPLATE_FILE = Path(__file__).with_name("message_template.txt")
+MESSAGE_TEMPLATE_FILE = RESOURCES_DIR / "message_template.txt"
+LEGACY_MESSAGE_TEMPLATE_FILE = APP_DIR / "message_template.txt"
 
 
 def limit_name_to_two_words(name: str) -> str:
@@ -636,17 +639,27 @@ class SMSSender:
 
 def load_message_template(template_path: str | Path | None = None) -> str:
     """Load the default message template from disk, with a safe fallback."""
-    target_path = Path(template_path) if template_path else MESSAGE_TEMPLATE_FILE
+    if template_path:
+        candidate_paths = [Path(template_path)]
+    else:
+        candidate_paths = [
+            Path("message_template.txt"),
+            LEGACY_MESSAGE_TEMPLATE_FILE,
+            MESSAGE_TEMPLATE_FILE,
+        ]
 
-    try:
-        message = target_path.read_text(encoding="utf-8").strip()
-        if message:
-            return message
-        logger.warning("Message template file is empty: %s. Falling back to built-in default.", target_path)
-    except FileNotFoundError:
-        logger.warning("Message template file not found: %s. Falling back to built-in default.", target_path)
-    except OSError as exc:
-        logger.warning("Failed to read message template file %s: %s. Falling back to built-in default.", target_path, exc)
+    for target_path in candidate_paths:
+        try:
+            message = target_path.read_text(encoding="utf-8").strip()
+            if message:
+                return message
+            logger.warning("Message template file is empty: %s. Trying next fallback.", target_path)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning("Failed to read message template file %s: %s. Trying next fallback.", target_path, exc)
+
+    logger.warning("No message template file could be loaded. Falling back to built-in default.")
 
     return DEFAULT_MESSAGE_TEMPLATE
 

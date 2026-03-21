@@ -12,8 +12,8 @@ Main surfaces:
 - `sms_sender.py`: core SMS sending logic, validation, retries, reports, and default message loading
 - `main.py`: CLI entry point for test send, bulk send, and Streamlit launch
 - `quickstart.py`: interactive menu wrapper around the main entry points
-- `message_template.txt`: default SMS template used by the CLI and by new Streamlit sessions
-- `sample-recipients.csv`: built-in sample list for quick end-to-end checks
+- `resources/message_template.txt`: bundled default SMS template used by the CLI and by new Streamlit sessions
+- `resources/sample-recipients.csv`: bundled sample list for quick end-to-end checks
 - `recipients.csv`: optional saved recipient list created or updated by the user or UI
 
 ## Working principles
@@ -22,7 +22,8 @@ Main surfaces:
 - Do not hardcode credentials, API secrets, or machine-specific secrets.
 - Do not rewrite user data files unless the task explicitly calls for persistence.
 - Preserve the current product behavior where:
-  - `message_template.txt` defines the default SMS template
+  - `resources/message_template.txt` defines the bundled default SMS template
+  - a root-level `message_template.txt` may exist as a local override, but it is not the standard tracked location
   - Streamlit message edits stay in session state unless the user explicitly edits the template file
   - uploaded recipients can be used in memory without forcing a write to `recipients.csv`
   - reports and logs are intentionally written to disk
@@ -88,11 +89,12 @@ python -m py_compile sms_sender.py streamlit_app.py main.py quickstart.py
   - the draft message can be edited
   - test send uses the edited draft
   - bulk send uses the edited draft
-  - resetting the draft reloads `message_template.txt`
+  - resetting the draft reloads the default template from `resources/message_template.txt` or a local override if present
 - If you change recipient flows, verify:
   - sample recipients still work with no extra setup
   - imported in-memory lists still work without saving a file
   - `recipients.csv` remains optional, not mandatory
+  - the bundled sample in `resources/sample-recipients.csv` still works even if the working directory has no sample file
 
 ## Sender and data rules
 

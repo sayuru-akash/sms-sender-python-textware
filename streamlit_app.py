@@ -7,7 +7,9 @@ import pandas as pd
 import streamlit as st
 
 from sms_sender import (
+    APP_DIR,
     MESSAGE_TEMPLATE_FILE,
+    RESOURCES_DIR,
     SMSSender,
     get_sms_message,
     is_valid_email,
@@ -20,6 +22,8 @@ DEFAULT_SAMPLE_CSV = "sample-recipients.csv"
 DEFAULT_UPLOAD_CSV = "recipients.csv"
 MEMORY_SOURCE = "__memory__"
 REQUIRED_ENV_VARS = ["SMS_USERNAME", "SMS_PASSWORD", "SMS_SOURCE", "SMS_API_URL"]
+BUNDLED_SAMPLE_CSV = RESOURCES_DIR / DEFAULT_SAMPLE_CSV
+LEGACY_SAMPLE_CSV = APP_DIR / DEFAULT_SAMPLE_CSV
 
 st.set_page_config(
     page_title="SMS Campaign Manager",
@@ -246,9 +250,9 @@ def ensure_session_state():
 
 def load_recipients(file_path=None):
     """Load recipients from CSV."""
-    target = file_path or DEFAULT_UPLOAD_CSV
+    target = resolve_csv_path(file_path or DEFAULT_UPLOAD_CSV)
     try:
-        if Path(target).exists():
+        if target.exists():
             return pd.read_csv(target, dtype=str).fillna("")
         return pd.DataFrame()
     except Exception as exc:
@@ -256,10 +260,20 @@ def load_recipients(file_path=None):
         return pd.DataFrame()
 
 
+def resolve_csv_path(file_path):
+    """Resolve known CSV names to their on-disk paths."""
+    if file_path == DEFAULT_SAMPLE_CSV:
+        for candidate in (Path(DEFAULT_SAMPLE_CSV), LEGACY_SAMPLE_CSV, BUNDLED_SAMPLE_CSV):
+            if candidate.exists():
+                return candidate
+        return BUNDLED_SAMPLE_CSV
+    return Path(file_path)
+
+
 def get_available_csvs():
     """Return available CSV sources."""
     options = []
-    if Path(DEFAULT_SAMPLE_CSV).exists():
+    if resolve_csv_path(DEFAULT_SAMPLE_CSV).exists():
         options.append(("Sample", DEFAULT_SAMPLE_CSV))
     if Path(DEFAULT_UPLOAD_CSV).exists():
         options.append(("Uploaded", DEFAULT_UPLOAD_CSV))
@@ -715,7 +729,7 @@ def render_campaign_tab(current_file, recipients_df):
         with st.container(border=True):
             st.subheader("Message")
             st.caption(
-                f"Edits here stay in this app session. To change the default for future sessions, edit `{MESSAGE_TEMPLATE_FILE.name}`."
+                f"Edits here stay in this app session. To change the default for future sessions, edit `resources/{MESSAGE_TEMPLATE_FILE.name}`."
             )
             message = st.text_area(
                 "SMS text",
@@ -792,7 +806,7 @@ def render_campaign_tab(current_file, recipients_df):
                         if current_file == MEMORY_SOURCE:
                             results = sender.send_bulk_sms_dataframe(recipients_df, message)
                         else:
-                            results = sender.send_bulk_sms(current_file, message)
+                            results = sender.send_bulk_sms(str(resolve_csv_path(current_file)), message)
                         report_path = sender.save_report()
                     result_row = st.columns(3)
                     with result_row[0]:
