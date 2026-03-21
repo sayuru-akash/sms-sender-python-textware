@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+import math
 from pathlib import Path
 from datetime import datetime
 from sms_sender import (
@@ -12,6 +13,8 @@ from sms_sender import (
     is_valid_email,
 )
 import logging
+
+REQUIRED_RECIPIENT_COLUMNS = ["name", "email", "contact_number"]
 
 # Page configuration
 st.set_page_config(
@@ -63,6 +66,19 @@ def load_recipients(file_path=None):
         return pd.DataFrame()
 
 
+def validate_recipients_columns(df, file_label):
+    """Validate required recipient columns before using a dataframe."""
+    missing_columns = [
+        column for column in REQUIRED_RECIPIENT_COLUMNS if column not in df.columns
+    ]
+    if missing_columns:
+        st.error(
+            f"{file_label} is missing required column(s): {', '.join(missing_columns)}"
+        )
+        return False
+    return True
+
+
 def get_available_csvs():
     """Get list of available CSV files"""
     csvs = []
@@ -112,8 +128,9 @@ def tab_recipients():
         recipients_df = load_recipients(current_file)
 
         if not recipients_df.empty:
-            st.dataframe(recipients_df, use_container_width=True)
-            st.markdown(f"**Total Recipients:** {len(recipients_df)}")
+            if validate_recipients_columns(recipients_df, current_file):
+                st.dataframe(recipients_df, width="stretch")
+                st.markdown(f"**Total Recipients:** {len(recipients_df)}")
         else:
             st.info("No recipients loaded yet. Create or upload a CSV file.")
 
@@ -172,7 +189,7 @@ def tab_recipients():
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
-            required_columns = {"name", "email", "contact_number"}
+            required_columns = set(REQUIRED_RECIPIENT_COLUMNS)
             if not required_columns.issubset(set(df.columns)):
                 st.error("❌ CSV must include columns: name, email, contact_number")
                 return
@@ -220,7 +237,7 @@ def tab_recipients():
                 duplicate_count = before_count - len(cleaned_df)
 
             st.markdown("**Cleaned valid recipients preview**")
-            st.dataframe(cleaned_df, use_container_width=True)
+            st.dataframe(cleaned_df, width="stretch")
 
             if duplicate_count > 0:
                 st.info(
@@ -229,8 +246,7 @@ def tab_recipients():
             if invalid_rows:
                 st.warning(
                     f"⚠️ Found {len(invalid_rows)} invalid row(s). These will not be saved.")
-                st.dataframe(pd.DataFrame(invalid_rows),
-                             use_container_width=True)
+                st.dataframe(pd.DataFrame(invalid_rows), width="stretch")
 
             if st.button("Save Uploaded CSV"):
                 if cleaned_df.empty:
@@ -266,8 +282,9 @@ def tab_campaigns():
         )
 
         char_count = len(message)
+        sms_parts = math.ceil(char_count / 160) if char_count else 0
         st.caption(
-            f"Characters: {char_count} | SMS Parts: {(char_count // 160) + 1}")
+            f"Characters: {char_count} | SMS Parts: {sms_parts}")
 
     with col2:
         st.subheader("Campaign Settings")
@@ -275,6 +292,11 @@ def tab_campaigns():
         recipients_df = load_recipients(current_file)
         st.metric("Recipients to Send", len(recipients_df))
         st.caption(f"Using: **{current_file}**")
+
+        if not recipients_df.empty and not validate_recipients_columns(
+            recipients_df, current_file
+        ):
+            return
 
         rate_limit = st.slider(
             "Rate Limit (seconds between SMS)",
@@ -285,8 +307,8 @@ def tab_campaigns():
         )
 
         st.info("ℹ️ **Preview Recipients:**")
-        st.dataframe(
-            recipients_df[["name", "contact_number"]], use_container_width=True)
+        preview_columns = ["name", "contact_number"]
+        st.dataframe(recipients_df[preview_columns], width="stretch")
 
     st.divider()
 
@@ -304,7 +326,7 @@ def tab_campaigns():
     with col2:
         st.write("")
         st.write("")
-        if st.button("📤 Send Test SMS", use_container_width=True):
+        if st.button("📤 Send Test SMS", width="stretch"):
             if test_recipient is not None:
                 try:
                     with st.spinner("Sending test SMS..."):
@@ -348,7 +370,7 @@ def tab_campaigns():
     with col3:
         st.write("")
         st.write("")
-        if st.button("🚀 START CAMPAIGN", use_container_width=True, disabled=not confirm):
+        if st.button("🚀 START CAMPAIGN", width="stretch", disabled=not confirm):
             if len(recipients_df) > 0:
                 try:
                     with st.spinner("Sending SMS campaign..."):
@@ -408,7 +430,7 @@ def tab_reports():
             # Details
             st.subheader("Details")
             details_df = pd.DataFrame(report_data["details"])
-            st.dataframe(details_df, use_container_width=True)
+            st.dataframe(details_df, width="stretch")
 
             # Download report
             st.download_button(

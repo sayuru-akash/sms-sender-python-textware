@@ -15,10 +15,10 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Launch web dashboard
-streamlit run streamlit_app.py
+python main.py --streamlit
 ```
 
-Opens interactive dashboard at `http://localhost:8501`
+Opens interactive dashboard at `http://localhost:8501` by default.
 
 ---
 
@@ -76,10 +76,16 @@ Auto-generated folders:
 ### Web Dashboard (Recommended) ⭐
 
 ```bash
-streamlit run streamlit_app.py
+python main.py --streamlit
 ```
 
 Opens at `http://localhost:8501` with full UI.
+
+Direct Streamlit command also works:
+
+```bash
+python -m streamlit run streamlit_app.py
+```
 
 **Dashboard Features:**
 
@@ -374,7 +380,7 @@ tail -f logs/sms_sender_*.log
 ### Quick Test: Web Dashboard
 
 ```bash
-streamlit run streamlit_app.py
+python main.py --streamlit
 ```
 
 1. Open `http://localhost:8501`
@@ -422,17 +428,15 @@ cat .gitignore | grep -E "\.env|venv"  # Should find both
 
 ## ❌ Troubleshooting
 
-## ❌ Troubleshooting
-
 | Problem                      | Solution                                                            |
-| ---------------------------- | ------------------------------------------------------------------- | ------------------------- |
+| ---------------------------- | ------------------------------------------------------------------- |
 | **Streamlit not starting**   | Ensure venv is activated: `source venv/bin/activate`                |
 | **Module not found errors**  | Install dependencies: `pip install -r requirements.txt`             |
 | **".env not found"**         | Create `.env` from `.env.sample` with your credentials              |
 | **No recipients showing**    | Ensure `sample-recipients.csv` exists or upload custom file         |
 | **API connection failed**    | Check internet, verify SMS credentials in `.env`                    |
 | **SMS not sending**          | Check phone format (07XXXXXXXX for Sri Lanka or full international) |
-| **Port 8501 already in use** | Kill process: `lsof -ti:8501                                        | xargs kill -9` then retry |
+| **Port 8501 already in use** | Stop the existing process with `lsof -ti:8501 | xargs kill -9`, or let Streamlit choose the next free port |
 | **venv not activating**      | Recreate: `python3 -m venv venv && source venv/bin/activate`        |
 
 **Debug steps:**
@@ -513,6 +517,7 @@ requests           # HTTP library
 python-dotenv      # Environment variables
 pandas             # CSV handling
 streamlit          # Web dashboard
+watchdog           # Faster Streamlit file watching on macOS/Linux
 ```
 
 **Install all:**
@@ -528,7 +533,7 @@ pip install -r requirements.txt
 Before first use:
 
 - [ ] `.env` exists with SMS credentials
-- [ ] `recipients.csv` exists with data
+- [ ] `sample-recipients.csv` exists, or upload/create `recipients.csv`
 - [ ] `pip install -r requirements.txt` completed
 - [ ] Internet connection working
 - [ ] Python 3.8+ installed
@@ -619,7 +624,7 @@ tail -f logs/sms_sender_*.log
 
 ### How SMS Sending Works
 
-1. **Load recipients** from `recipients.csv`
+1. **Load recipients** from the selected CSV (`sample-recipients.csv` or `recipients.csv`)
 2. **Personalize message** - replace `{name}` with recipient name
 3. **Send SMS** via Text-Ware API
 4. **Rate limit** - wait 2 seconds before next SMS
@@ -654,21 +659,22 @@ tail -f logs/sms_sender_*.log
 
 ## 🚀 Getting Started
 
-1. **Clone/download project** to `/Users/sayuru/PycharmProjects/PythonProjectSMS`
+1. **Clone/download project** to `/Users/sayuru/PycharmProjects/sms-sender-python-textware`
 
 2. **Install dependencies:**
 
    ```bash
+   source venv/bin/activate
    pip install -r requirements.txt
    ```
 
 3. **Verify setup:**
 
    ```bash
-   python main.py --test
+   python main.py --streamlit
    ```
 
-4. **Edit recipients.csv** with your recipient data
+4. **Edit `recipients.csv`** with your recipient data, or start with `sample-recipients.csv`
 
 5. **Send SMS:**
 

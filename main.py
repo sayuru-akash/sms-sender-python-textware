@@ -141,10 +141,17 @@ def main():
     if args.streamlit:
         import subprocess
         print("\n🚀 Launching Streamlit dashboard...")
-        subprocess.run(["streamlit", "run", "streamlit_app.py"])
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "streamlit", "run", "streamlit_app.py"],
+                check=True,
+            )
+        except KeyboardInterrupt:
+            print("\n⏹️ Streamlit dashboard stopped.")
+        except subprocess.CalledProcessError as exc:
+            print(f"❌ Streamlit failed to start or exited unexpectedly (code {exc.returncode}).")
+            sys.exit(exc.returncode)
 
 
 if __name__ == "__main__":
     main()
-
-

@@ -502,14 +502,17 @@ class SMSSender:
                     if not cleaned["is_valid"]:
                         logger.warning(
                             f"⚠ Skipping invalid recipient: {cleaned['name'] or 'Unknown'} ({'; '.join(cleaned['errors'])})")
-                        results["failed"] += 1
-                        results["details"].append({
+                        skipped_result = {
                             "status": "skipped",
                             "name": cleaned["name"],
                             "email": cleaned["email"],
                             "contact_number": row.get("contact_number", "").strip(),
-                            "reason": "; ".join(cleaned["errors"])
-                        })
+                            "reason": "; ".join(cleaned["errors"]),
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        results["failed"] += 1
+                        results["details"].append(skipped_result)
+                        self.report_data.append(skipped_result)
                         continue
 
                     name = cleaned["name"]
@@ -519,14 +522,17 @@ class SMSSender:
                     if contact_number in seen_numbers:
                         logger.warning(
                             f"⚠ Skipping duplicate phone number: {contact_number} ({name})")
-                        results["failed"] += 1
-                        results["details"].append({
+                        skipped_result = {
                             "status": "skipped",
                             "name": name,
                             "email": email,
                             "contact_number": contact_number,
-                            "reason": "Duplicate contact number"
-                        })
+                            "reason": "Duplicate contact number",
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        results["failed"] += 1
+                        results["details"].append(skipped_result)
+                        self.report_data.append(skipped_result)
                         continue
 
                     seen_numbers.add(contact_number)
@@ -575,7 +581,7 @@ class SMSSender:
             "timestamp": datetime.now().isoformat(),
             "total_sms": len(self.report_data),
             "successful": sum(1 for r in self.report_data if r.get("status") == "success"),
-            "failed": sum(1 for r in self.report_data if r.get("status") == "error"),
+            "failed": sum(1 for r in self.report_data if r.get("status") != "success"),
             "details": self.report_data
         }
 
