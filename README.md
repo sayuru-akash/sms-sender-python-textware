@@ -9,7 +9,7 @@
 
 ---
 
-## ⚡ Quick Start (1 Minute)
+## ⚡ Quick Start 
 
 ```bash
 # Create and activate virtual environment
