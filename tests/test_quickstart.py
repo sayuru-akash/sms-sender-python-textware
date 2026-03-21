@@ -1,4 +1,5 @@
 import subprocess
+import runpy
 
 import quickstart
 
@@ -111,3 +112,59 @@ def test_main_handles_invalid_choice_then_exit(monkeypatch, capsys):
     output = capsys.readouterr().out
     assert "Invalid choice" in output
     assert "Goodbye" in output
+
+
+def test_main_dispatches_each_menu_action(monkeypatch):
+    calls = []
+    monkeypatch.setattr(quickstart, "check_setup", lambda: True)
+    monkeypatch.setattr(quickstart, "run_test", lambda: calls.append("test"))
+    monkeypatch.setattr(quickstart, "run_bulk", lambda: calls.append("bulk"))
+    monkeypatch.setattr(quickstart, "run_dashboard", lambda: calls.append("dashboard"))
+    monkeypatch.setattr(quickstart, "view_reports", lambda: calls.append("reports"))
+    monkeypatch.setattr(quickstart, "check_status", lambda: calls.append("status"))
+    monkeypatch.setattr(quickstart, "view_docs", lambda: calls.append("docs"))
+    choices = iter(["1", "2", "3", "4", "5", "6", "7"])
+    monkeypatch.setattr(quickstart, "show_menu", lambda: next(choices))
+
+    quickstart.main()
+
+    assert calls == ["test", "bulk", "dashboard", "reports", "status", "docs"]
+
+
+def test_check_status_handles_missing_modules(monkeypatch, capsys):
+    original_import = __import__
+
+    def fake_import(name, *args, **kwargs):
+        if name in {"requests", "dotenv", "pandas", "streamlit"}:
+            raise ImportError(name)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    quickstart.check_status()
+    output = capsys.readouterr().out
+    assert "Install with: pip install requests" in output
+    assert "Install with: pip install python-dotenv" in output
+    assert "Install with: pip install pandas" in output
+    assert "Install with: pip install streamlit" in output
+
+
+def test_quickstart_module_entry_handles_keyboard_interrupt(tmp_path, monkeypatch, capsys):
+    for filename in [".env", "recipients.csv", "sms_sender.py", "streamlit_app.py", "requirements.txt"]:
+        (tmp_path / filename).write_text("placeholder", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(KeyboardInterrupt()))
+
+    runpy.run_module("quickstart", run_name="__main__")
+
+    assert "Cancelled by user" in capsys.readouterr().out
+
+
+def test_quickstart_module_entry_handles_generic_exception(tmp_path, monkeypatch, capsys):
+    for filename in [".env", "recipients.csv", "sms_sender.py", "streamlit_app.py", "requirements.txt"]:
+        (tmp_path / filename).write_text("placeholder", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("builtins.input", lambda _prompt: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    runpy.run_module("quickstart", run_name="__main__")
+
+    assert "Error: boom" in capsys.readouterr().out

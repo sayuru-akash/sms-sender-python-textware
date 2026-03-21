@@ -411,8 +411,8 @@ The suite covers:
 
 Current local verification:
 
-- `59` tests passing
-- `83%` total coverage from `pytest --cov=. --cov-report=term-missing`
+- `85` tests passing
+- `92%` total coverage from `pytest --cov=. --cov-report=term-missing`
 
 ### Quick Test: Web Dashboard
 

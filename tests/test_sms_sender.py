@@ -284,3 +284,188 @@ def test_save_report_writes_json_with_failed_count_for_non_success(
     assert payload["total_sms"] == 3
     assert payload["successful"] == 1
     assert payload["failed"] == 2
+
+
+def test_send_sms_request_timeout_on_all_formats_returns_timeout_error(sms_env):
+    import requests
+
+    sender = SMSSender()
+    sender.session.post = lambda *_args, **_kwargs: (_ for _ in ()).throw(requests.exceptions.Timeout())
+
+    result = sender._send_sms_request("94777123456", "hello")
+
+    assert result["status"] == "error"
+    assert "Timeout on format 3" in result["error"]
+
+
+def test_send_sms_request_connection_error_on_all_formats_returns_connection_error(sms_env):
+    import requests
+
+    sender = SMSSender()
+    sender.session.post = lambda *_args, **_kwargs: (_ for _ in ()).throw(requests.exceptions.ConnectionError())
+
+    result = sender._send_sms_request("94777123456", "hello")
+
+    assert result["status"] == "error"
+    assert "Connection error on format 3" in result["error"]
+
+
+def test_send_sms_request_generic_error_on_all_formats_returns_last_error(sms_env):
+    sender = SMSSender()
+    sender.session.post = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("bad payload"))
+
+    result = sender._send_sms_request("94777123456", "hello")
+
+    assert result["status"] == "error"
+    assert "Error on format 3: bad payload" in result["error"]
+
+
+def test_send_sms_get_request_returns_none_when_all_formats_fail(sms_env):
+    sender = SMSSender()
+    sender.session.get = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("fail"))
+    assert sender._send_sms_get_request("94777123456", "hello") is None
+
+
+def test_test_api_connection_returns_error_when_no_valid_rows_exist(tmp_path, sms_env):
+    csv_path = tmp_path / "recipients.csv"
+    csv_path.write_text(
+        "name,email,contact_number\nInvalid,bad-email,123\n",
+        encoding="utf-8",
+    )
+
+    sender = SMSSender()
+    result = sender.test_api_connection(str(csv_path))
+
+    assert result["status"] == "error"
+    assert "No valid recipients found" in result["error"]
+
+
+def test_test_api_connection_returns_error_when_post_and_get_fail(tmp_path, monkeypatch, sms_env):
+    csv_path = tmp_path / "recipients.csv"
+    csv_path.write_text(
+        "name,email,contact_number\nValid User,valid@example.com,0777123456\n",
+        encoding="utf-8",
+    )
+
+    sender = SMSSender()
+    monkeypatch.setattr(
+        sender,
+        "_send_sms_request",
+        lambda *_args, **_kwargs: {"status": "error", "error": "POST failed", "timestamp": "2026-03-22T00:00:00"},
+    )
+    monkeypatch.setattr(sender, "_send_sms_get_request", lambda *_args, **_kwargs: None)
+
+    result = sender.test_api_connection(str(csv_path))
+
+    assert result["status"] == "error"
+    assert result["error"] == "Both POST and GET methods failed"
+    assert result["post_error"] == "POST failed"
+
+
+def test_send_bulk_sms_raises_for_missing_file(sms_env):
+    sender = SMSSender()
+    with pytest.raises(FileNotFoundError):
+        sender.send_bulk_sms("missing.csv", "Hello")
+
+
+def test_send_bulk_sms_wraps_csv_error(tmp_path, monkeypatch, sms_env):
+    csv_path = tmp_path / "recipients.csv"
+    csv_path.write_text("name,email,contact_number\n", encoding="utf-8")
+
+    sender = SMSSender()
+
+    def bad_open(*_args, **_kwargs):
+        raise sms_sender.csv.Error("bad csv")
+
+    monkeypatch.setattr(sms_sender, "open", bad_open, raising=False)
+    with pytest.raises(ValueError, match="Error reading CSV file"):
+        sender.send_bulk_sms(str(csv_path), "Hello")
+
+
+def test_send_bulk_sms_reraises_unexpected_error(tmp_path, monkeypatch, sms_env):
+    csv_path = tmp_path / "recipients.csv"
+    csv_path.write_text("name,email,contact_number\nAlice,alice@example.com,0777123456\n", encoding="utf-8")
+    sender = SMSSender()
+    monkeypatch.setattr(sender, "_send_bulk_rows", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        sender.send_bulk_sms(str(csv_path), "Hello")
+
+
+def test_send_bulk_sms_dataframe_rejects_empty_dataframe(sms_env):
+    sender = SMSSender()
+    with pytest.raises(ValueError, match="Recipients dataframe is empty"):
+        sender.send_bulk_sms_dataframe(pd.DataFrame(), "Hello")
+
+
+def test_send_bulk_rows_counts_error_status_as_failed(sms_env, monkeypatch):
+    sender = SMSSender()
+    monkeypatch.setattr(
+        sender,
+        "send_sms",
+        lambda *_args, **_kwargs: {"status": "error", "timestamp": "2026-03-22T00:00:00"},
+    )
+    rows = [{"name": "Alice", "email": "alice@example.com", "contact_number": "0777123456"}]
+
+    result = sender._send_bulk_rows(rows, "Hello {name}")
+
+    assert result["successful"] == 0
+    assert result["failed"] == 1
+
+
+def test_send_bulk_rows_reraises_unexpected_error(sms_env, monkeypatch):
+    sender = SMSSender()
+    monkeypatch.setattr(sender, "send_sms", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("send failed")))
+    rows = [{"name": "Alice", "email": "alice@example.com", "contact_number": "0777123456"}]
+
+    with pytest.raises(RuntimeError, match="send failed"):
+        sender._send_bulk_rows(rows, "Hello {name}")
+
+
+def test_save_report_reraises_when_write_fails(sms_env, monkeypatch):
+    sender = SMSSender()
+    sender.report_data = [{"status": "success"}]
+
+    def bad_open(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(sms_sender, "open", bad_open, raising=False)
+    with pytest.raises(OSError, match="disk full"):
+        sender.save_report()
+
+
+def test_get_sms_message_contains_personalization_placeholder():
+    message = sms_sender.get_sms_message()
+    assert "{name}" in message
+    assert "Zoom" in message
+
+
+def test_sms_sender_main_success(monkeypatch, sms_env):
+    class FakeSender:
+        def send_bulk_sms(self, recipients_file, message):
+            assert recipients_file == "recipients.csv"
+            return {"total": 1}
+
+        def save_report(self):
+            return "reports/test.json"
+
+    monkeypatch.setattr(sms_sender, "SMSSender", FakeSender)
+    monkeypatch.setattr(sms_sender, "get_sms_message", lambda: "message")
+
+    result = sms_sender.main()
+    assert result == {"total": 1}
+
+
+def test_sms_sender_main_reraises_errors(monkeypatch, sms_env):
+    class BrokenSender:
+        def send_bulk_sms(self, recipients_file, message):
+            raise RuntimeError("fatal")
+
+        def save_report(self):
+            return "reports/test.json"
+
+    monkeypatch.setattr(sms_sender, "SMSSender", lambda: BrokenSender())
+    monkeypatch.setattr(sms_sender, "get_sms_message", lambda: "message")
+
+    with pytest.raises(RuntimeError, match="fatal"):
+        sms_sender.main()
