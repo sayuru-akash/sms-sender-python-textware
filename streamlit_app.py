@@ -758,15 +758,22 @@ def render_campaign_tab(current_file, recipients_df):
             st.caption(
                 f"Edits here stay in this app session. To change the default for future sessions, edit `resources/{MESSAGE_TEMPLATE_FILE.name}`."
             )
+
+            def reset_draft_message():
+                st.session_state.draft_message = get_sms_message()
+
             message = st.text_area(
                 "SMS text",
+                value=st.session_state.draft_message,
                 key="draft_message",
                 height=240,
                 help="Use {name} for personalization.",
             )
-            if st.button("Reset to default template", key="reset_draft_message"):
-                st.session_state.draft_message = get_sms_message()
-                st.rerun()
+            st.button(
+                "Reset to default template",
+                key="reset_draft_message",
+                on_click=reset_draft_message,
+            )
             stats = build_message_stats(message)
             metric_row = st.columns(3)
             with metric_row[0]:
