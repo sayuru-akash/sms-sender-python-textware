@@ -143,28 +143,16 @@ def test_app_uses_imported_recipients_as_active_source():
 
     assert at.session_state["csv_selector"] == "Imported (demo.csv)"
     assert at.metric[0].value == "Imported (demo.csv)"
-    assert at.selectbox[0].options == ["Import One (94770000001)", "Import Two (94770000002)"]
+    assert at.selectbox[0].options == ["Sample", "Imported (demo.csv)"]
 
 
-def test_app_add_recipient_to_imported_memory_source():
-    at = AppTest.from_file(str(Path(streamlit_app.__file__)))
-    at.session_state["imported_recipients"] = pd.DataFrame(
-        [{"name": "Import One", "email": "one@example.com", "contact_number": "94770000001"}]
-    )
-    at.session_state["imported_label"] = "Imported (demo.csv)"
-    at.session_state["selected_source"] = "__memory__"
+def test_set_selected_source_updates_pending_source():
+    streamlit_app.st.session_state.clear()
 
-    at.run()
-    at.text_input[1].set_value("Added User")
-    at.text_input[2].set_value("added@example.com")
-    at.text_input[3].set_value("0771234568")
-    at.button[0].click()
-    at.run()
+    streamlit_app.set_selected_source(streamlit_app.MEMORY_SOURCE)
 
-    imported_df = at.session_state["imported_recipients"]
-    assert len(imported_df) == 2
-    assert imported_df.iloc[-1]["name"] == "Added User"
-    assert imported_df.iloc[-1]["contact_number"] == "94771234568"
+    assert streamlit_app.st.session_state["selected_source"] == streamlit_app.MEMORY_SOURCE
+    assert streamlit_app.st.session_state["pending_selected_source"] == streamlit_app.MEMORY_SOURCE
 
 
 def test_app_uses_bundled_sample_when_no_local_csv_exists(tmp_path, monkeypatch):

@@ -38,10 +38,13 @@ def run_test_campaign():
             print(f"Method Used: {result['method']}")
         if result.get('api_format'):
             print(f"Parameter Format: {result['api_format']}")
+        if result.get('operation_id'):
+            print(f"Operation ID: {result['operation_id']}")
         
         if result['status'] == 'success':
-            print(f"✓ API Response: {result['response']}")
+            print(f"✓ Gateway Response: {result['response']}")
             print(f"✓ API Status Code: {result['status_code']}")
+            print("ℹ Delivery to the handset is not confirmed by this response.")
         else:
             print(f"❌ Error: {result.get('error', 'Unknown error')}")
         
@@ -80,7 +83,8 @@ def run_bulk_campaign():
         # Save report
         report_path = sender.save_report()
         
-        print(f"\n✓ Campaign completed!")
+        print(f"\n✓ Campaign requests completed!")
+        print("ℹ Gateway acceptance does not guarantee handset delivery.")
         print(f"Report saved: {report_path}")
         
         return True

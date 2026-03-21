@@ -358,13 +358,16 @@ timeout = 30  # Request timeout in seconds
 
 - Timestamp of campaign
 - Total SMS count
-- Success/failure breakdown
+- Gateway acceptance/failure breakdown
 - Individual SMS results:
   - Status (success/error)
   - Phone number
   - Recipient name & email
   - API response
+  - Operation ID when the gateway returns one
   - Error details (if failed)
+
+Note: a successful send in this app means the SMS gateway accepted the request. It does not by itself confirm handset delivery.
 
 **View report:**
 
@@ -541,8 +544,13 @@ cat .gitignore | grep -E "\.env|venv"  # Should find both
 **Response:**
 
 - Format: JSON
-- Success: HTTP 200 with operation ID
+- Success: HTTP 200 with gateway acceptance response, often including an operation ID
 - Error: HTTP 400+ with error message
+
+Delivery-status note:
+
+- TextWare's public API docs show send endpoints and examples that include a `dr` flag, but this project does not currently have a documented public delivery-status lookup endpoint to poll
+- The app therefore records gateway acceptance and operation IDs, but does not claim confirmed handset delivery
 
 **Retry Strategy:**
 

@@ -84,7 +84,7 @@ def test_run_bulk_campaign_success(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(main, "get_sms_message", lambda: "message")
 
     assert main.run_bulk_campaign() is True
-    assert "Campaign completed" in capsys.readouterr().out
+    assert "Campaign requests completed" in capsys.readouterr().out
 
 
 def test_run_bulk_campaign_returns_false_on_exception(tmp_path, monkeypatch, capsys):

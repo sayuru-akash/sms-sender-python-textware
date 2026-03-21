@@ -11,13 +11,16 @@ from sms_sender import (
     MESSAGE_TEMPLATE_FILE,
     RESOURCES_DIR,
     SMSSender,
+    ensure_recipient_record,
     get_sms_message,
     is_valid_email,
     limit_name_to_two_words,
     normalize_sl_phone_number,
+    personalize_message,
 )
 
-REQUIRED_RECIPIENT_COLUMNS = ["name", "email", "contact_number"]
+REQUIRED_RECIPIENT_COLUMNS = ["contact_number"]
+RECIPIENT_COLUMNS = ["name", "email", "contact_number"]
 DEFAULT_SAMPLE_CSV = "sample-recipients.csv"
 DEFAULT_UPLOAD_CSV = "recipients.csv"
 MEMORY_SOURCE = "__memory__"
@@ -256,7 +259,7 @@ def load_recipients(file_path=None):
     target = resolve_csv_path(file_path or DEFAULT_UPLOAD_CSV)
     try:
         if target.exists():
-            return pd.read_csv(target, dtype=str).fillna("")
+            return ensure_recipient_dataframe(pd.read_csv(target, dtype=str).fillna(""))
         return pd.DataFrame()
     except Exception as exc:
         st.error(f"Error loading recipients: {exc}")
@@ -271,6 +274,15 @@ def resolve_csv_path(file_path):
                 return candidate
         return BUNDLED_SAMPLE_CSV
     return Path(file_path)
+
+
+def ensure_recipient_dataframe(df):
+    """Return a dataframe with the supported recipient columns present."""
+    normalized_df = df.copy() if df is not None else pd.DataFrame()
+    for column in RECIPIENT_COLUMNS:
+        if column not in normalized_df.columns:
+            normalized_df[column] = ""
+    return normalized_df
 
 
 def get_available_csvs():
@@ -367,10 +379,12 @@ def recipients_summary(df):
     if df.empty or get_missing_columns(df):
         return {"rows": len(df), "phones": 0, "emails": 0}
 
+    normalized_df = ensure_recipient_dataframe(df)
+    non_empty_emails = normalized_df["email"].astype(str).str.strip()
     return {
-        "rows": len(df),
-        "phones": df["contact_number"].astype(str).nunique(),
-        "emails": df["email"].astype(str).str.lower().nunique(),
+        "rows": len(normalized_df),
+        "phones": normalized_df["contact_number"].astype(str).nunique(),
+        "emails": non_empty_emails[non_empty_emails != ""].str.lower().nunique(),
     }
 
 
@@ -387,6 +401,7 @@ def build_message_stats(message):
 
 def prepare_uploaded_recipients(df):
     """Validate and clean uploaded CSV rows."""
+    df = ensure_recipient_dataframe(df)
     cleaned_rows = []
     invalid_rows = []
 
@@ -397,9 +412,7 @@ def prepare_uploaded_recipients(df):
         phone = normalize_sl_phone_number(raw_phone)
 
         errors = []
-        if not name:
-            errors.append("Missing name")
-        if not is_valid_email(email):
+        if email and not is_valid_email(email):
             errors.append("Invalid email")
         if not phone:
             errors.append("Invalid phone")
@@ -433,6 +446,14 @@ def prepare_uploaded_recipients(df):
         duplicate_count = before_count - len(cleaned_df)
 
     return cleaned_df, pd.DataFrame(invalid_rows), duplicate_count
+
+
+def format_recipient_label(recipient):
+    """Build a readable recipient label for select widgets."""
+    row = ensure_recipient_record(recipient)
+    name = row["name"].strip()
+    phone = row["contact_number"].strip()
+    return f"{name} ({phone})" if name else phone
 
 
 def show_status_chips(current_file, recipients_df, env_vars, report_count):
@@ -827,7 +848,10 @@ def render_campaign_tab(current_file, recipients_df):
                             email=recipient["email"],
                         )
                     if result["status"] == "success":
-                        st.success("Test SMS sent.")
+                        st.success("Gateway accepted the test SMS request.")
+                        st.info("Delivery to the handset is not confirmed by this API response.")
+                        if result.get("operation_id"):
+                            st.caption(f"Operation ID: {result['operation_id']}")
                     else:
                         st.error("Test SMS failed.")
                     st.json(result)
@@ -852,10 +876,11 @@ def render_campaign_tab(current_file, recipients_df):
                     with result_row[0]:
                         st.metric("Total", results["total"])
                     with result_row[1]:
-                        st.metric("Successful", results["successful"])
+                        st.metric("Accepted by gateway", results["successful"])
                     with result_row[2]:
                         st.metric("Failed / skipped", results["failed"])
-                    st.success(f"Done. Report: {report_path}")
+                    st.success(f"Campaign requests completed. Report: {report_path}")
+                    st.info("Gateway acceptance does not guarantee handset delivery.")
                 except Exception as exc:
                     st.error(f"Campaign failed: {exc}")
 
@@ -882,7 +907,7 @@ def render_reports_tab(reports):
         with top[0]:
             st.metric("Total", report_data.get("total_sms", len(details_df)))
         with top[1]:
-            st.metric("Successful", report_data.get("successful", 0))
+            st.metric("Accepted by gateway", report_data.get("successful", 0))
         with top[2]:
             st.metric("Failed", report_data.get("failed", 0))
 

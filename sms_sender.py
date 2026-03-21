@@ -55,6 +55,8 @@ We look forward to having you with us tonight.
 SITC Campus X CodeZela"""
 MESSAGE_TEMPLATE_FILE = RESOURCES_DIR / "message_template.txt"
 LEGACY_MESSAGE_TEMPLATE_FILE = APP_DIR / "message_template.txt"
+OPERATION_ID_PATTERN = re.compile(r"Operation success:\s*([A-Za-z0-9_-]+)", re.IGNORECASE)
+RECIPIENT_FIELDS = ["name", "email", "contact_number"]
 
 
 def limit_name_to_two_words(name: str) -> str:
@@ -120,9 +122,7 @@ def sanitize_recipient(name: str, email: str, phone: str) -> Dict:
     cleaned_phone = normalize_sl_phone_number(phone)
 
     errors: List[str] = []
-    if not cleaned_name:
-        errors.append("Missing name")
-    if not cleaned_email or not is_valid_email(cleaned_email):
+    if cleaned_email and not is_valid_email(cleaned_email):
         errors.append("Invalid email")
     if not cleaned_phone:
         errors.append("Invalid Sri Lanka mobile number")
@@ -134,6 +134,57 @@ def sanitize_recipient(name: str, email: str, phone: str) -> Dict:
         "errors": errors,
         "is_valid": len(errors) == 0,
     }
+
+
+def ensure_recipient_record(row: Dict) -> Dict:
+    """Return a row dict with all supported recipient fields present."""
+    normalized = dict(row or {})
+    for field in RECIPIENT_FIELDS:
+        normalized.setdefault(field, "")
+    return normalized
+
+
+def personalize_message(message: str, name: str) -> str:
+    """Replace the name placeholder safely when recipient names are optional."""
+    text = str(message or "")
+    if "{name}" not in text:
+        return text
+
+    clean_name = limit_name_to_two_words((name or "").strip())
+    if clean_name:
+        return text.replace("{name}", clean_name)
+
+    personalized = text.replace("{name}", "")
+    personalized = re.sub(r"[ \t]{2,}", " ", personalized)
+    personalized = re.sub(r" +([,.;:!?])", r"\1", personalized)
+    personalized = re.sub(r"\n{3,}", "\n\n", personalized)
+    return personalized.strip()
+
+
+def extract_operation_id(response_text: str) -> Optional[str]:
+    """Extract a gateway operation id from a success response when present."""
+    if not response_text:
+        return None
+    match = OPERATION_ID_PATTERN.search(str(response_text))
+    return match.group(1) if match else None
+
+
+def annotate_gateway_acceptance(result: Dict) -> Dict:
+    """Mark a successful API response as gateway acceptance, not handset delivery."""
+    enriched = dict(result)
+    if enriched.get("status") != "success":
+        return enriched
+
+    operation_id = extract_operation_id(enriched.get("response", ""))
+    enriched["gateway_status"] = "accepted"
+    enriched["delivery_status"] = "unknown"
+    enriched["delivery_confirmed"] = False
+    enriched["delivery_status_note"] = (
+        "The SMS gateway accepted the request, but this response does not confirm handset delivery."
+    )
+    if operation_id:
+        enriched["operation_id"] = operation_id
+    return enriched
 
 
 class SMSSender:
@@ -238,17 +289,17 @@ class SMSSender:
                     # If response is 200-299 range (success), break
                     if 200 <= response.status_code < 300:
                         logger.info(
-                            f"✓ SMS sent successfully to {phone_number}")
+                            f"✓ SMS request accepted by gateway for {phone_number}")
                         logger.debug(f"Response: {response.text}")
 
-                        return {
+                        return annotate_gateway_acceptance({
                             "status": "success",
                             "response": response.text,
                             "status_code": response.status_code,
                             "phone": phone_number,
                             "timestamp": datetime.now().isoformat(),
                             "api_format": attempt
-                        }
+                        })
 
                     # If it's a client error on all attempts, keep trying
                     last_error = response
@@ -346,8 +397,8 @@ class SMSSender:
 
                     if 200 <= response.status_code < 300:
                         logger.info(
-                            f"✓ SMS sent successfully (GET) to {phone_number}")
-                        return {
+                            f"✓ SMS request accepted by gateway (GET) for {phone_number}")
+                        return annotate_gateway_acceptance({
                             "status": "success",
                             "response": response.text,
                             "status_code": response.status_code,
@@ -355,7 +406,7 @@ class SMSSender:
                             "timestamp": datetime.now().isoformat(),
                             "method": "GET",
                             "format": attempt
-                        }
+                        })
                 except Exception as e:
                     logger.debug(f"GET format {attempt} failed: {str(e)}")
                     continue
@@ -417,7 +468,7 @@ class SMSSender:
                 result["message_preview"] = test_message
 
                 if result.get("status") == "success":
-                    logger.info("✓ API connection successful (POST)")
+                    logger.info("✓ API request accepted by gateway (POST)")
                     # Add to report
                     self.report_data.append(result)
                     return result
@@ -431,7 +482,7 @@ class SMSSender:
                     get_result["name"] = test_name
                     get_result["email"] = test_email
                     get_result["message_preview"] = test_message
-                    logger.info("✓ API connection successful (GET)")
+                    logger.info("✓ API request accepted by gateway (GET)")
                     # Add to report
                     self.report_data.append(get_result)
                     return get_result
@@ -583,8 +634,7 @@ class SMSSender:
 
                 seen_numbers.add(contact_number)
 
-                personalized_message = message.replace(
-                    "{name}", name) if name else message
+                personalized_message = personalize_message(message, name)
 
                 result = self.send_sms(
                     contact_number, personalized_message, name, email)
@@ -600,7 +650,7 @@ class SMSSender:
             logger.info(f"📊 BULK SMS CAMPAIGN COMPLETED")
             logger.info(f"{'='*60}")
             logger.info(f"Total Recipients: {results['total']}")
-            logger.info(f"✓ Successfully Sent: {results['successful']}")
+            logger.info(f"✓ Accepted by Gateway: {results['successful']}")
             logger.info(f"❌ Failed: {results['failed']}")
             logger.info(f"{'='*60}\n")
 

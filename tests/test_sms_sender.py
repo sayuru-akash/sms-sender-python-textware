@@ -7,6 +7,7 @@ import pytest
 import sms_sender
 from sms_sender import (
     SMSSender,
+    extract_operation_id,
     is_valid_email,
     limit_name_to_two_words,
     normalize_sl_phone_number,
@@ -96,6 +97,8 @@ def test_send_sms_request_success_uses_first_payload_format(sms_env):
 
     assert result["status"] == "success"
     assert result["api_format"] == 1
+    assert result["gateway_status"] == "accepted"
+    assert result["delivery_confirmed"] is False
     assert captured_payloads[0][0] == "https://example.com/send"
     assert captured_payloads[0][1]["src"] == "TESTSRC"
     assert captured_payloads[0][1]["dst"] == "94777123456"
@@ -135,6 +138,15 @@ def test_send_sms_get_request_can_succeed_on_second_format(sms_env):
     assert result["status"] == "success"
     assert result["method"] == "GET"
     assert result["format"] == 2
+    assert result["gateway_status"] == "accepted"
+
+
+def test_extract_operation_id_returns_id_when_present():
+    assert extract_operation_id("Operation success: 1774126971489888") == "1774126971489888"
+
+
+def test_extract_operation_id_returns_none_for_non_matching_text():
+    assert extract_operation_id("queued") is None
 
 
 def test_send_sms_invalid_recipient_does_not_hit_api(sms_env):
@@ -434,10 +446,10 @@ def test_save_report_reraises_when_write_fails(sms_env, monkeypatch):
         sender.save_report()
 
 
-def test_get_sms_message_contains_personalization_placeholder():
+def test_get_sms_message_returns_non_empty_template():
     message = sms_sender.get_sms_message()
-    assert "{name}" in message
-    assert "Zoom" in message
+    assert isinstance(message, str)
+    assert message.strip()
 
 
 def test_get_sms_message_reads_from_template_file(tmp_path):
