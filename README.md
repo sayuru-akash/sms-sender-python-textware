@@ -185,9 +185,17 @@ Jane Smith,jane@example.com,0768765432
 
 **Requirements:**
 
-- **name**: Required for personalization (automatically limited to first 2 words)
-- **email**: Required and must be valid format (example: info@codezela.com)
+- **name**: Optional, used for personalization when present (automatically limited to first 2 words)
+- **email**: Optional, but if provided it must be a valid format (example: info@codezela.com)
 - **contact_number**: Required and must be a valid Sri Lanka mobile number
+
+Minimum supported CSV:
+
+```csv
+contact_number
+0777123456
+0761234567
+```
 
 Accepted phone input formats (all normalized to 94XXXXXXXXX):
 
@@ -200,6 +208,7 @@ Accepted phone input formats (all normalized to 94XXXXXXXXX):
 Upload behavior:
 
 - CSV importer auto-cleans name, email, and phone fields
+- Rows with only `contact_number` are valid and supported
 - Invalid rows are shown with row numbers and reasons
 - Valid cleaned rows can be used immediately as a temporary imported source
 - Saving to `recipients.csv` is optional
@@ -608,6 +617,13 @@ Manual file edit also works when needed. Edit `recipients.csv` and add rows:
 ```csv
 name,email,contact_number
 New Person,email@example.com,07XXXXXXXX
+```
+
+Or use a phone-only list:
+
+```csv
+contact_number
+07XXXXXXXX
 ```
 
 ### Change Message

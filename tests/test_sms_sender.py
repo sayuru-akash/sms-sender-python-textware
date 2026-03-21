@@ -11,6 +11,7 @@ from sms_sender import (
     is_valid_email,
     limit_name_to_two_words,
     normalize_sl_phone_number,
+    personalize_message,
     sanitize_recipient,
 )
 
@@ -67,9 +68,14 @@ def test_sanitize_recipient_returns_cleaned_values_and_errors():
     assert cleaned["contact_number"] == "94777123456"
     assert cleaned["is_valid"] is True
 
+    contact_only = sanitize_recipient("", "", "0777123457")
+    assert contact_only["name"] == ""
+    assert contact_only["email"] == ""
+    assert contact_only["contact_number"] == "94777123457"
+    assert contact_only["is_valid"] is True
+
     invalid = sanitize_recipient("", "bad-email", "12345")
     assert invalid["is_valid"] is False
-    assert "Missing name" in invalid["errors"]
     assert "Invalid email" in invalid["errors"]
     assert "Invalid Sri Lanka mobile number" in invalid["errors"]
 
@@ -149,6 +155,11 @@ def test_extract_operation_id_returns_none_for_non_matching_text():
     assert extract_operation_id("queued") is None
 
 
+def test_personalize_message_handles_missing_name_without_leaving_placeholder():
+    assert personalize_message("Hello {name}", "") == "Hello"
+    assert personalize_message("Dear {name}, welcome!", "") == "Dear, welcome!"
+
+
 def test_send_sms_invalid_recipient_does_not_hit_api(sms_env):
     sender = SMSSender()
 
@@ -212,6 +223,30 @@ def test_send_bulk_sms_dataframe_handles_invalid_and_duplicate_rows(sms_env, no_
     assert result["successful"] == 1
     assert result["failed"] == 2
     assert [item["status"] for item in result["details"]] == ["success", "skipped", "skipped"]
+
+
+def test_send_bulk_sms_dataframe_allows_contact_number_only_rows(sms_env, no_sleep):
+    sender = SMSSender()
+    sender._send_sms_request = lambda phone_number, message: {
+        "status": "success",
+        "response": "ok",
+        "status_code": 200,
+        "phone": phone_number,
+        "timestamp": "2026-03-22T00:00:00",
+    }
+
+    recipients_df = pd.DataFrame(
+        [
+            {"contact_number": "0777123456"},
+            {"contact_number": "0777123457", "name": "", "email": ""},
+        ]
+    )
+
+    result = sender.send_bulk_sms_dataframe(recipients_df, "Hello {name}")
+
+    assert result["total"] == 2
+    assert result["successful"] == 2
+    assert result["failed"] == 0
 
 
 def test_send_bulk_sms_reads_csv_file(tmp_path, monkeypatch, sms_env, no_sleep):

@@ -278,11 +278,13 @@ def resolve_csv_path(file_path):
 
 def ensure_recipient_dataframe(df):
     """Return a dataframe with the supported recipient columns present."""
-    normalized_df = df.copy() if df is not None else pd.DataFrame()
-    for column in RECIPIENT_COLUMNS:
+    normalized_df = (df.copy() if df is not None else pd.DataFrame()).fillna("")
+    for column in [column for column in RECIPIENT_COLUMNS if column != "contact_number"]:
         if column not in normalized_df.columns:
             normalized_df[column] = ""
-    return normalized_df
+    ordered_columns = [column for column in RECIPIENT_COLUMNS if column in normalized_df.columns]
+    remaining_columns = [column for column in normalized_df.columns if column not in ordered_columns]
+    return normalized_df[ordered_columns + remaining_columns]
 
 
 def get_available_csvs():
@@ -568,8 +570,9 @@ def render_dashboard_tab(current_file, recipients_df, env_vars, reports):
             elif missing_columns:
                 st.error(f"Missing column(s): {', '.join(missing_columns)}")
             else:
+                visible_df = ensure_recipient_dataframe(recipients_df)
                 st.dataframe(
-                    recipients_df[REQUIRED_RECIPIENT_COLUMNS].head(8),
+                    visible_df[RECIPIENT_COLUMNS].head(8),
                     width="stretch",
                     hide_index=True,
                 )
@@ -603,8 +606,7 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                     st.error(
                         f"{current_label} is missing: {', '.join(missing_columns)}")
                 else:
-                    visible_df = recipients_df[REQUIRED_RECIPIENT_COLUMNS].copy(
-                    )
+                    visible_df = ensure_recipient_dataframe(recipients_df)[RECIPIENT_COLUMNS].copy()
                     if search:
                         matches = visible_df.astype(str).apply(
                             lambda col: col.str.contains(
@@ -634,15 +636,13 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                     cleaned_email = email.strip().lower()
                     cleaned_phone = normalize_sl_phone_number(phone)
 
-                    if not limited_name:
-                        st.error("Name is required.")
-                    elif not is_valid_email(cleaned_email):
+                    if cleaned_email and not is_valid_email(cleaned_email):
                         st.error("Invalid email.")
                     elif not cleaned_phone:
                         st.error("Invalid Sri Lanka mobile number.")
                     else:
                         if current_source == MEMORY_SOURCE and st.session_state.get("imported_recipients") is not None:
-                            target_df = st.session_state.imported_recipients.copy()
+                            target_df = ensure_recipient_dataframe(st.session_state.imported_recipients.copy())
                             existing_numbers = (
                                 target_df["contact_number"].astype(
                                     str).tolist()
@@ -668,9 +668,9 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                             return
 
                         target_df = (
-                            load_recipients(DEFAULT_UPLOAD_CSV)
+                            ensure_recipient_dataframe(load_recipients(DEFAULT_UPLOAD_CSV))
                             if Path(DEFAULT_UPLOAD_CSV).exists()
-                            else pd.DataFrame(columns=REQUIRED_RECIPIENT_COLUMNS)
+                            else pd.DataFrame(columns=RECIPIENT_COLUMNS)
                         )
                         target_missing = get_missing_columns(target_df)
                         if target_missing:
@@ -735,7 +735,7 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                 if cleaned_df.empty:
                     st.info("No valid rows.")
                 else:
-                    st.dataframe(cleaned_df, width="stretch", hide_index=True)
+                    st.dataframe(ensure_recipient_dataframe(cleaned_df)[RECIPIENT_COLUMNS], width="stretch", hide_index=True)
             with invalid_tab:
                 if invalid_df.empty:
                     st.success("No invalid rows.")
@@ -762,6 +762,7 @@ def render_recipients_tab(current_source, current_label, recipients_df):
 
 def render_campaign_tab(current_file, recipients_df):
     """Campaign editor and send flow."""
+    recipients_df = ensure_recipient_dataframe(recipients_df)
     if recipients_df.empty:
         st.warning("Load recipients first.")
         return
@@ -808,11 +809,13 @@ def render_campaign_tab(current_file, recipients_df):
             preview_index = st.selectbox(
                 "Preview recipient",
                 options=range(len(recipients_df)),
-                format_func=lambda idx: f"{recipients_df.iloc[idx]['name']} ({recipients_df.iloc[idx]['contact_number']})",
+                format_func=lambda idx: format_recipient_label(recipients_df.iloc[idx].to_dict()),
                 key="preview_recipient",
             )
-            preview_message = message.replace(
-                "{name}", recipients_df.iloc[preview_index]["name"])
+            preview_message = personalize_message(
+                message,
+                recipients_df.iloc[preview_index].get("name", ""),
+            )
             st.code(preview_message, language=None)
 
     with right:
@@ -832,7 +835,7 @@ def render_campaign_tab(current_file, recipients_df):
             test_index = st.selectbox(
                 "Test recipient",
                 options=range(len(recipients_df)),
-                format_func=lambda idx: f"{recipients_df.iloc[idx]['name']} ({recipients_df.iloc[idx]['contact_number']})",
+                format_func=lambda idx: format_recipient_label(recipients_df.iloc[idx].to_dict()),
                 key="test_recipient",
             )
             if st.button("Send test SMS"):
@@ -842,10 +845,9 @@ def render_campaign_tab(current_file, recipients_df):
                         recipient = recipients_df.iloc[test_index]
                         result = sender.send_sms(
                             phone_number=recipient["contact_number"],
-                            message=message.replace(
-                                "{name}", recipient["name"]),
-                            name=recipient["name"],
-                            email=recipient["email"],
+                            message=personalize_message(message, recipient.get("name", "")),
+                            name=recipient.get("name", ""),
+                            email=recipient.get("email", ""),
                         )
                     if result["status"] == "success":
                         st.success("Gateway accepted the test SMS request.")

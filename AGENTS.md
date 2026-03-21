@@ -75,9 +75,8 @@ python -m py_compile sms_sender.py streamlit_app.py main.py quickstart.py
 - Prefer targeted fixes over large refactors unless the task explicitly asks for restructuring.
 - Keep dependencies limited. Do not add packages unless they materially improve the project.
 - Preserve current CSV column requirements:
-  - `name`
-  - `email`
   - `contact_number`
+  - `name` and `email` are optional supported columns
 
 ## Streamlit-specific guidance
 
@@ -92,6 +91,7 @@ python -m py_compile sms_sender.py streamlit_app.py main.py quickstart.py
   - resetting the draft reloads the default template from `resources/message_template.txt` or a local override if present
 - If you change recipient flows, verify:
   - sample recipients still work with no extra setup
+  - contact-number-only lists still work without requiring name or email
   - imported in-memory lists still work without saving a file
   - `recipients.csv` remains optional, not mandatory
   - the bundled sample in `resources/sample-recipients.csv` still works even if the working directory has no sample file

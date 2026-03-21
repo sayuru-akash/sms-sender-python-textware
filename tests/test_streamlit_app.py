@@ -9,14 +9,16 @@ import streamlit_app
 def test_load_recipients_preserves_string_columns(tmp_path, monkeypatch):
     csv_path = tmp_path / "recipients.csv"
     csv_path.write_text(
-        "name,email,contact_number\nSayuru,test@example.com,0777123456\n",
+        "contact_number\n0777123456\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
 
     df = streamlit_app.load_recipients("recipients.csv")
 
-    assert list(df.columns) == streamlit_app.REQUIRED_RECIPIENT_COLUMNS
+    assert list(df.columns) == streamlit_app.RECIPIENT_COLUMNS
+    assert df.iloc[0]["name"] == ""
+    assert df.iloc[0]["email"] == ""
     assert df.iloc[0]["contact_number"] == "0777123456"
 
 
@@ -64,6 +66,7 @@ def test_prepare_uploaded_recipients_cleans_invalid_rows_and_duplicates():
     df = pd.DataFrame(
         [
             {"name": "Alice Silva Perera", "email": "ALICE@example.com", "contact_number": "0777123456"},
+            {"contact_number": "0777123457"},
             {"name": "", "email": "bad-email", "contact_number": "123"},
             {"name": "Dup User", "email": "dup@example.com", "contact_number": "94777123456"},
         ]
@@ -71,10 +74,13 @@ def test_prepare_uploaded_recipients_cleans_invalid_rows_and_duplicates():
 
     cleaned_df, invalid_df, duplicate_count = streamlit_app.prepare_uploaded_recipients(df)
 
-    assert len(cleaned_df) == 1
+    assert len(cleaned_df) == 2
     assert cleaned_df.iloc[0]["name"] == "Alice Silva"
     assert cleaned_df.iloc[0]["email"] == "alice@example.com"
     assert cleaned_df.iloc[0]["contact_number"] == "94777123456"
+    assert cleaned_df.iloc[1]["name"] == ""
+    assert cleaned_df.iloc[1]["email"] == ""
+    assert cleaned_df.iloc[1]["contact_number"] == "94777123457"
     assert len(invalid_df) == 1
     assert duplicate_count == 1
 
