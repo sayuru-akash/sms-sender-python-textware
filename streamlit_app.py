@@ -21,7 +21,8 @@ REQUIRED_RECIPIENT_COLUMNS = ["name", "email", "contact_number"]
 DEFAULT_SAMPLE_CSV = "sample-recipients.csv"
 DEFAULT_UPLOAD_CSV = "recipients.csv"
 MEMORY_SOURCE = "__memory__"
-REQUIRED_ENV_VARS = ["SMS_USERNAME", "SMS_PASSWORD", "SMS_SOURCE", "SMS_API_URL"]
+REQUIRED_ENV_VARS = ["SMS_USERNAME",
+                     "SMS_PASSWORD", "SMS_SOURCE", "SMS_API_URL"]
 BUNDLED_SAMPLE_CSV = RESOURCES_DIR / DEFAULT_SAMPLE_CSV
 LEGACY_SAMPLE_CSV = APP_DIR / DEFAULT_SAMPLE_CSV
 
@@ -246,6 +247,8 @@ def ensure_session_state():
         st.session_state.draft_message = get_sms_message()
     if "campaign_rate_limit" not in st.session_state:
         st.session_state.campaign_rate_limit = 2
+    if "active_section" not in st.session_state:
+        st.session_state.active_section = "Dashboard"
 
 
 def load_recipients(file_path=None):
@@ -278,7 +281,8 @@ def get_available_csvs():
     if Path(DEFAULT_UPLOAD_CSV).exists():
         options.append(("Uploaded", DEFAULT_UPLOAD_CSV))
     if st.session_state.get("imported_recipients") is not None:
-        options.append((st.session_state.get("imported_label", "Imported (unsaved)"), MEMORY_SOURCE))
+        options.append((st.session_state.get("imported_label",
+                       "Imported (unsaved)"), MEMORY_SOURCE))
     return options
 
 
@@ -424,7 +428,8 @@ def prepare_uploaded_recipients(df):
     duplicate_count = 0
     if not cleaned_df.empty:
         before_count = len(cleaned_df)
-        cleaned_df = cleaned_df.drop_duplicates(subset=["contact_number"], keep="first")
+        cleaned_df = cleaned_df.drop_duplicates(
+            subset=["contact_number"], keep="first")
         duplicate_count = before_count - len(cleaned_df)
 
     return cleaned_df, pd.DataFrame(invalid_rows), duplicate_count
@@ -450,7 +455,8 @@ def show_status_chips(current_file, recipients_df, env_vars, report_count):
     chip_html = "".join(
         f'<span class="status-chip {tone}">{label}</span>' for tone, label in chips
     )
-    st.markdown(f'<div class="status-row">{chip_html}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="status-row">{chip_html}</div>', unsafe_allow_html=True)
 
 
 def render_sidebar(current_file, recipients_df, env_vars):
@@ -493,17 +499,24 @@ def render_sidebar(current_file, recipients_df, env_vars):
         ("Message ready", bool(st.session_state.draft_message.strip())),
     ]
     for label, ok in checks:
-        st.write(f"{'✅' if ok else '⬜'} {label}")
+        status = "OK" if ok else "Needs attention"
+        st.caption(f"{label}: {status}")
 
 
 def render_header(current_file, recipients_df, env_vars, reports):
     """Top header."""
+    summary = recipients_summary(recipients_df)
+    missing_env = [key for key in REQUIRED_ENV_VARS if not env_vars.get(key)]
+
     st.title("SMS Campaign Manager")
     st.markdown(
         '<p class="app-subtitle">Simple workflow for recipients, sending, and reports.</p>',
         unsafe_allow_html=True,
     )
-    show_status_chips(current_file, recipients_df, env_vars, len(reports))
+    env_state = "ready" if not missing_env else "needs setup"
+    st.caption(
+        f"Source: {current_file} | Recipients: {summary['rows']} | Reports: {len(reports)} | Env: {env_state}"
+    )
 
 
 def render_dashboard_tab(current_file, recipients_df, env_vars, reports):
@@ -558,19 +571,23 @@ def render_recipients_tab(current_source, current_label, recipients_df):
     with top_left:
         with st.container(border=True):
             st.subheader("Current recipients")
-            search = st.text_input("Search", placeholder="Name, email, or phone")
+            search = st.text_input(
+                "Search", placeholder="Name, email, or phone")
 
             if recipients_df.empty:
                 st.info("No recipients in the selected file.")
             else:
                 missing_columns = get_missing_columns(recipients_df)
                 if missing_columns:
-                    st.error(f"{current_label} is missing: {', '.join(missing_columns)}")
+                    st.error(
+                        f"{current_label} is missing: {', '.join(missing_columns)}")
                 else:
-                    visible_df = recipients_df[REQUIRED_RECIPIENT_COLUMNS].copy()
+                    visible_df = recipients_df[REQUIRED_RECIPIENT_COLUMNS].copy(
+                    )
                     if search:
                         matches = visible_df.astype(str).apply(
-                            lambda col: col.str.contains(search, case=False, na=False)
+                            lambda col: col.str.contains(
+                                search, case=False, na=False)
                         )
                         visible_df = visible_df[matches.any(axis=1)]
 
@@ -606,7 +623,8 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                         if current_source == MEMORY_SOURCE and st.session_state.get("imported_recipients") is not None:
                             target_df = st.session_state.imported_recipients.copy()
                             existing_numbers = (
-                                target_df["contact_number"].astype(str).tolist()
+                                target_df["contact_number"].astype(
+                                    str).tolist()
                                 if not target_df.empty
                                 else []
                             )
@@ -635,10 +653,12 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                         )
                         target_missing = get_missing_columns(target_df)
                         if target_missing:
-                            st.error(f"{DEFAULT_UPLOAD_CSV} is missing: {', '.join(target_missing)}")
+                            st.error(
+                                f"{DEFAULT_UPLOAD_CSV} is missing: {', '.join(target_missing)}")
                         else:
                             existing_numbers = (
-                                target_df["contact_number"].astype(str).tolist()
+                                target_df["contact_number"].astype(
+                                    str).tolist()
                                 if not target_df.empty
                                 else []
                             )
@@ -652,10 +672,13 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                                         "contact_number": [cleaned_phone],
                                     }
                                 )
-                                target_df = pd.concat([target_df, new_row], ignore_index=True)
-                                target_df.to_csv(DEFAULT_UPLOAD_CSV, index=False)
+                                target_df = pd.concat(
+                                    [target_df, new_row], ignore_index=True)
+                                target_df.to_csv(
+                                    DEFAULT_UPLOAD_CSV, index=False)
                                 set_selected_source(DEFAULT_UPLOAD_CSV)
-                                st.success("Recipient saved to recipients.csv.")
+                                st.success(
+                                    "Recipient saved to recipients.csv.")
                                 st.rerun()
 
     with st.container(border=True):
@@ -671,10 +694,12 @@ def render_recipients_tab(current_source, current_label, recipients_df):
 
             missing_columns = get_missing_columns(uploaded_df)
             if missing_columns:
-                st.error(f"Uploaded CSV is missing: {', '.join(missing_columns)}")
+                st.error(
+                    f"Uploaded CSV is missing: {', '.join(missing_columns)}")
                 return
 
-            cleaned_df, invalid_df, duplicate_count = prepare_uploaded_recipients(uploaded_df)
+            cleaned_df, invalid_df, duplicate_count = prepare_uploaded_recipients(
+                uploaded_df)
 
             stats = st.columns(3)
             with stats[0]:
@@ -702,13 +727,15 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                     st.session_state.imported_recipients = cleaned_df.copy()
                     st.session_state.imported_label = f"Imported ({uploaded_file.name})"
                     set_selected_source(MEMORY_SOURCE)
-                    st.success(f"Using {len(cleaned_df)} row(s) without saving a file.")
+                    st.success(
+                        f"Using {len(cleaned_df)} row(s) without saving a file.")
                     st.rerun()
             with action_right:
                 if st.button("Save as recipients.csv", disabled=cleaned_df.empty):
                     cleaned_df.to_csv(DEFAULT_UPLOAD_CSV, index=False)
                     set_selected_source(DEFAULT_UPLOAD_CSV)
-                    st.success(f"Saved {len(cleaned_df)} row(s) to recipients.csv.")
+                    st.success(
+                        f"Saved {len(cleaned_df)} row(s) to recipients.csv.")
                     st.rerun()
 
 
@@ -747,7 +774,8 @@ def render_campaign_tab(current_file, recipients_df):
             with metric_row[1]:
                 st.metric("SMS parts", stats["sms_parts"])
             with metric_row[2]:
-                st.metric("Has {name}", "Yes" if stats["has_placeholder"] else "No")
+                st.metric("Has {name}",
+                          "Yes" if stats["has_placeholder"] else "No")
 
             preview_index = st.selectbox(
                 "Preview recipient",
@@ -755,7 +783,8 @@ def render_campaign_tab(current_file, recipients_df):
                 format_func=lambda idx: f"{recipients_df.iloc[idx]['name']} ({recipients_df.iloc[idx]['contact_number']})",
                 key="preview_recipient",
             )
-            preview_message = message.replace("{name}", recipients_df.iloc[preview_index]["name"])
+            preview_message = message.replace(
+                "{name}", recipients_df.iloc[preview_index]["name"])
             st.code(preview_message, language=None)
 
     with right:
@@ -769,7 +798,8 @@ def render_campaign_tab(current_file, recipients_df):
             )
             estimated_seconds = len(recipients_df) * rate_limit
             st.metric("Recipients", len(recipients_df))
-            st.metric("Est. duration", f"{estimated_seconds // 60}m {estimated_seconds % 60}s")
+            st.metric("Est. duration",
+                      f"{estimated_seconds // 60}m {estimated_seconds % 60}s")
 
             test_index = st.selectbox(
                 "Test recipient",
@@ -784,7 +814,8 @@ def render_campaign_tab(current_file, recipients_df):
                         recipient = recipients_df.iloc[test_index]
                         result = sender.send_sms(
                             phone_number=recipient["contact_number"],
-                            message=message.replace("{name}", recipient["name"]),
+                            message=message.replace(
+                                "{name}", recipient["name"]),
                             name=recipient["name"],
                             email=recipient["email"],
                         )
@@ -804,9 +835,11 @@ def render_campaign_tab(current_file, recipients_df):
                         sender = SMSSender()
                         sender.rate_limit_delay = rate_limit
                         if current_file == MEMORY_SOURCE:
-                            results = sender.send_bulk_sms_dataframe(recipients_df, message)
+                            results = sender.send_bulk_sms_dataframe(
+                                recipients_df, message)
                         else:
-                            results = sender.send_bulk_sms(str(resolve_csv_path(current_file)), message)
+                            results = sender.send_bulk_sms(
+                                str(resolve_csv_path(current_file)), message)
                         report_path = sender.save_report()
                     result_row = st.columns(3)
                     with result_row[0]:
@@ -849,11 +882,14 @@ def render_reports_tab(reports):
         if details_df.empty:
             st.info("No row-level details.")
         else:
-            status_values = ["All"] + sorted(details_df["status"].dropna().astype(str).unique().tolist())
-            status_filter = st.selectbox("Status", status_values, key="report_status")
+            status_values = [
+                "All"] + sorted(details_df["status"].dropna().astype(str).unique().tolist())
+            status_filter = st.selectbox(
+                "Status", status_values, key="report_status")
             visible_df = details_df
             if status_filter != "All":
-                visible_df = details_df[details_df["status"].astype(str) == status_filter]
+                visible_df = details_df[details_df["status"].astype(
+                    str) == status_filter]
             st.dataframe(visible_df, width="stretch", hide_index=True)
 
         st.download_button(
@@ -871,7 +907,8 @@ def render_settings_tab(current_label, env_vars, reports):
     with left:
         with st.container(border=True):
             st.subheader("Environment")
-            missing_env = [key for key in REQUIRED_ENV_VARS if not env_vars.get(key)]
+            missing_env = [
+                key for key in REQUIRED_ENV_VARS if not env_vars.get(key)]
             if missing_env:
                 st.warning(f"Missing: {', '.join(missing_env)}")
             else:
@@ -879,10 +916,14 @@ def render_settings_tab(current_label, env_vars, reports):
 
             env_df = pd.DataFrame(
                 [
-                    {"Setting": "SMS Username", "Value": mask_value(env_vars.get("SMS_USERNAME", ""))},
-                    {"Setting": "SMS Password", "Value": mask_value(env_vars.get("SMS_PASSWORD", ""))},
-                    {"Setting": "SMS Source", "Value": env_vars.get("SMS_SOURCE", "Not set")},
-                    {"Setting": "SMS API URL", "Value": env_vars.get("SMS_API_URL", "Not set")},
+                    {"Setting": "SMS Username", "Value": mask_value(
+                        env_vars.get("SMS_USERNAME", ""))},
+                    {"Setting": "SMS Password", "Value": mask_value(
+                        env_vars.get("SMS_PASSWORD", ""))},
+                    {"Setting": "SMS Source", "Value": env_vars.get(
+                        "SMS_SOURCE", "Not set")},
+                    {"Setting": "SMS API URL", "Value": env_vars.get(
+                        "SMS_API_URL", "Not set")},
                 ]
             )
             st.dataframe(env_df, width="stretch", hide_index=True)
@@ -890,7 +931,8 @@ def render_settings_tab(current_label, env_vars, reports):
     with right:
         with st.container(border=True):
             st.subheader("Files")
-            log_files = list(Path("logs").glob("*.log")) if Path("logs").exists() else []
+            log_files = list(Path("logs").glob("*.log")
+                             ) if Path("logs").exists() else []
             st.metric("Logs", len(log_files))
             st.metric("Reports", len(reports))
             st.metric("Selected source", current_label)
@@ -905,7 +947,8 @@ def main():
     pending_selected_source = st.session_state.pending_selected_source
     if pending_selected_source:
         st.session_state.selected_source = pending_selected_source
-        label_by_path = {csv_path: label for label, csv_path in get_available_csvs()}
+        label_by_path = {csv_path: label for label,
+                         csv_path in get_available_csvs()}
         if pending_selected_source in label_by_path:
             st.session_state.csv_selector = label_by_path[pending_selected_source]
         st.session_state.pending_selected_source = None
@@ -922,23 +965,24 @@ def main():
 
     render_header(current_label, recipients_df, env_vars, reports)
 
-    dashboard_tab, recipients_tab, campaign_tab, reports_tab, settings_tab = st.tabs(
-        ["Dashboard", "Recipients", "Campaign", "Reports", "Settings"]
+    st.caption("Navigate")
+    section = st.segmented_control(
+        "Section",
+        ["Dashboard", "Recipients", "Campaign", "Reports", "Settings"],
+        default=st.session_state.get("active_section", "Dashboard"),
+        key="active_section",
+        label_visibility="collapsed",
     )
 
-    with dashboard_tab:
+    if section == "Dashboard":
         render_dashboard_tab(current_label, recipients_df, env_vars, reports)
-
-    with recipients_tab:
+    elif section == "Recipients":
         render_recipients_tab(current_file, current_label, recipients_df)
-
-    with campaign_tab:
+    elif section == "Campaign":
         render_campaign_tab(current_file, recipients_df)
-
-    with reports_tab:
+    elif section == "Reports":
         render_reports_tab(reports)
-
-    with settings_tab:
+    elif section == "Settings":
         render_settings_tab(current_label, env_vars, reports)
 
 
