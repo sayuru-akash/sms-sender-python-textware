@@ -2,6 +2,7 @@ import os
 import csv
 import json
 import time
+import re
 import requests
 import logging
 from datetime import datetime
@@ -40,14 +41,85 @@ def limit_name_to_two_words(name: str) -> str:
     return " ".join(words[:2])
 
 
+def normalize_sl_phone_number(phone: str) -> Optional[str]:
+    """Normalize Sri Lankan mobile numbers to 94XXXXXXXXX format.
+
+    Accepted inputs:
+    - 9 digits: 7XXXXXXXX
+    - 10 digits: 07XXXXXXXX
+    - 11 digits: 947XXXXXXXX
+    - +94 / separators like spaces, dashes, parentheses are tolerated
+    """
+    if phone is None:
+        return None
+
+    raw = str(phone).strip()
+    if not raw:
+        return None
+
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        return None
+
+    if len(digits) == 9 and digits.startswith("7"):
+        normalized = f"94{digits}"
+    elif len(digits) == 10 and digits.startswith("07"):
+        normalized = f"94{digits[1:]}"
+    elif len(digits) == 11 and digits.startswith("94"):
+        normalized = digits
+    elif len(digits) == 13 and digits.startswith("0094"):
+        normalized = digits[2:]
+    else:
+        return None
+
+    # Mobile format must be 94 + 9 digits, with local part starting 7X.
+    if not re.fullmatch(r"94(7[0-8]\d{7})", normalized):
+        return None
+
+    return normalized
+
+
+def is_valid_email(email: str) -> bool:
+    """Validate email with a practical, strict-enough pattern."""
+    if email is None:
+        return False
+    value = str(email).strip()
+    if not value:
+        return False
+    return bool(re.fullmatch(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", value))
+
+
+def sanitize_recipient(name: str, email: str, phone: str) -> Dict:
+    """Return cleaned recipient fields and validation errors."""
+    cleaned_name = limit_name_to_two_words((name or "").strip())
+    cleaned_email = (email or "").strip().lower()
+    cleaned_phone = normalize_sl_phone_number(phone)
+
+    errors: List[str] = []
+    if not cleaned_name:
+        errors.append("Missing name")
+    if not cleaned_email or not is_valid_email(cleaned_email):
+        errors.append("Invalid email")
+    if not cleaned_phone:
+        errors.append("Invalid Sri Lanka mobile number")
+
+    return {
+        "name": cleaned_name,
+        "email": cleaned_email,
+        "contact_number": cleaned_phone,
+        "errors": errors,
+        "is_valid": len(errors) == 0,
+    }
+
+
 class SMSSender:
     """SMS Sender with rate limiting, retrying, and comprehensive error handling"""
 
     def __init__(self):
-        self.username = os.getenv("SMS_USERNAME")
-        self.password = os.getenv("SMS_PASSWORD")
-        self.source = os.getenv("SMS_SOURCE")
-        self.api_url = os.getenv("SMS_API_URL")
+        self.username = os.getenv("SMS_USERNAME") or ""
+        self.password = os.getenv("SMS_PASSWORD") or ""
+        self.source = os.getenv("SMS_SOURCE") or ""
+        self.api_url = os.getenv("SMS_API_URL") or ""
         self.rate_limit_delay = 2  # Delay in seconds between SMS sends
         self.max_retries = 3
         self.timeout = 30
@@ -91,7 +163,7 @@ class SMSSender:
 
         return session
 
-    def _send_sms_request(self, phone_number: str, message: str) -> Optional[Dict]:
+    def _send_sms_request(self, phone_number: str, message: str) -> Dict:
         """Send SMS via API with retry logic - supports multiple API formats"""
 
         # Format 1: Correct Text-Ware API format (src, dst, text)
@@ -287,10 +359,19 @@ class SMSSender:
         try:
             with open(recipients_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
-                first_row = next(reader, None)
+                valid_row = None
+                for row in reader:
+                    cleaned = sanitize_recipient(
+                        row.get("name", ""),
+                        row.get("email", ""),
+                        row.get("contact_number", "")
+                    )
+                    if cleaned["is_valid"]:
+                        valid_row = cleaned
+                        break
 
-                if not first_row:
-                    error_msg = "No recipients found in CSV file"
+                if not valid_row:
+                    error_msg = "No valid recipients found in CSV file"
                     logger.error(f"❌ {error_msg}")
                     return {
                         "status": "error",
@@ -298,18 +379,9 @@ class SMSSender:
                         "timestamp": datetime.now().isoformat()
                     }
 
-                test_phone = first_row.get("contact_number", "").strip()
-                test_name = first_row.get("name", "").strip()
-                test_email = first_row.get("email", "").strip()
-
-                if not test_phone:
-                    error_msg = "No phone number found in first recipient"
-                    logger.error(f"❌ {error_msg}")
-                    return {
-                        "status": "error",
-                        "error": error_msg,
-                        "timestamp": datetime.now().isoformat()
-                    }
+                test_phone = valid_row["contact_number"]
+                test_name = valid_row["name"]
+                test_email = valid_row["email"]
 
                 logger.info(f"📤 Testing with: {test_name} ({test_phone})")
                 test_message = "Test SMS - API Connectivity Check"
@@ -369,11 +441,25 @@ class SMSSender:
     def send_sms(self, phone_number: str, message: str, name: str = "", email: str = "") -> Dict:
         """Send SMS with rate limiting"""
 
-        result = self._send_sms_request(phone_number, message)
+        cleaned = sanitize_recipient(name, email, phone_number)
+        if not cleaned["is_valid"]:
+            result = {
+                "status": "error",
+                "error": "; ".join(cleaned["errors"]),
+                "phone": phone_number,
+                "name": cleaned["name"],
+                "email": cleaned["email"],
+                "timestamp": datetime.now().isoformat(),
+                "message_preview": message[:50] + "..." if len(message) > 50 else message,
+            }
+            self.report_data.append(result)
+            return result
+
+        result = self._send_sms_request(cleaned["contact_number"], message)
 
         # Add additional info to report
-        result["name"] = name
-        result["email"] = email
+        result["name"] = cleaned["name"]
+        result["email"] = cleaned["email"]
         result["message_preview"] = message[:50] + \
             "..." if len(message) > 50 else message
 
@@ -402,27 +488,48 @@ class SMSSender:
         try:
             with open(recipients_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
+                seen_numbers = set()
 
                 for row in reader:
                     results["total"] += 1
 
-                    # Extract data from CSV
-                    name = limit_name_to_two_words(row.get("name", "").strip())
-                    email = row.get("email", "").strip()
-                    contact_number = row.get("contact_number", "").strip()
+                    cleaned = sanitize_recipient(
+                        row.get("name", ""),
+                        row.get("email", ""),
+                        row.get("contact_number", "")
+                    )
 
-                    # Validate phone number
-                    if not contact_number:
+                    if not cleaned["is_valid"]:
                         logger.warning(
-                            f"⚠ Skipping recipient with no contact number: {name}")
+                            f"⚠ Skipping invalid recipient: {cleaned['name'] or 'Unknown'} ({'; '.join(cleaned['errors'])})")
+                        results["failed"] += 1
+                        results["details"].append({
+                            "status": "skipped",
+                            "name": cleaned["name"],
+                            "email": cleaned["email"],
+                            "contact_number": row.get("contact_number", "").strip(),
+                            "reason": "; ".join(cleaned["errors"])
+                        })
+                        continue
+
+                    name = cleaned["name"]
+                    email = cleaned["email"]
+                    contact_number = cleaned["contact_number"]
+
+                    if contact_number in seen_numbers:
+                        logger.warning(
+                            f"⚠ Skipping duplicate phone number: {contact_number} ({name})")
                         results["failed"] += 1
                         results["details"].append({
                             "status": "skipped",
                             "name": name,
                             "email": email,
-                            "reason": "No contact number provided"
+                            "contact_number": contact_number,
+                            "reason": "Duplicate contact number"
                         })
                         continue
+
+                    seen_numbers.add(contact_number)
 
                     # Personalize message
                     personalized_message = message.replace(

@@ -32,6 +32,9 @@ Sends personalized SMS messages to recipients from CSV files using the Text-Ware
 - ✅ Single & bulk SMS sending
 - ✅ Automatic name personalization {name}
 - ✅ Smart name handling - limits to first 2 words
+- ✅ Automatic phone cleanup to Sri Lanka format 94XXXXXXXXX
+- ✅ Email format validation on import and manual add
+- ✅ Invalid CSV rows are rejected with row-level reasons
 - ✅ Rate limiting (adjustable) - prevents API overload
 - ✅ Automatic retry (3 attempts) - handles failures
 - ✅ Detailed logging - all events recorded
@@ -166,8 +169,23 @@ Jane Smith,jane@example.com,0768765432
 **Requirements:**
 
 - **name**: Required for personalization (automatically limited to first 2 words)
-- **email**: Required for records
-- **contact_number**: Required for SMS (format: 07XXXXXXXX for Sri Lanka or international format)
+- **email**: Required and must be valid format (example: info@codezela.com)
+- **contact_number**: Required and must be a valid Sri Lanka mobile number
+
+Accepted phone input formats (all normalized to 94XXXXXXXXX):
+
+- 7XXXXXXXX
+- 07XXXXXXXX
+- 947XXXXXXXX
+- +94 7X XXX XXXX
+- Variations with spaces, dashes, or parentheses
+
+Upload behavior:
+
+- CSV importer auto-cleans name, email, and phone fields
+- Invalid rows are shown with row numbers and reasons
+- Only valid cleaned rows are saved to recipients.csv
+- Duplicate phone numbers are automatically deduplicated (first row kept)
 
 **Name Handling:**
 

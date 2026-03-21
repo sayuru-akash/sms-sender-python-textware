@@ -4,7 +4,13 @@ import json
 import os
 from pathlib import Path
 from datetime import datetime
-from sms_sender import SMSSender, get_sms_message, limit_name_to_two_words
+from sms_sender import (
+    SMSSender,
+    get_sms_message,
+    limit_name_to_two_words,
+    normalize_sl_phone_number,
+    is_valid_email,
+)
 import logging
 
 # Page configuration
@@ -121,15 +127,34 @@ def tab_recipients():
 
             if submitted and name and email and phone:
                 try:
+                    limited_name = limit_name_to_two_words(name)
+                    cleaned_email = email.strip().lower()
+                    cleaned_phone = normalize_sl_phone_number(phone)
+
+                    if not is_valid_email(cleaned_email):
+                        st.error("❌ Invalid email format")
+                        return
+                    if not cleaned_phone:
+                        st.error(
+                            "❌ Invalid phone number. Use valid Sri Lanka mobile formats like 07XXXXXXXX, 7XXXXXXXX, 94XXXXXXXXX, or +94 7X XXX XXXX")
+                        return
+
                     # Always add to recipients.csv
                     recipients_df = load_recipients("recipients.csv") if Path(
                         "recipients.csv").exists() else pd.DataFrame()
-                    # Limit name to first 2 words
-                    limited_name = limit_name_to_two_words(name)
+
+                    if not recipients_df.empty and "contact_number" in recipients_df.columns:
+                        existing_numbers = recipients_df["contact_number"].astype(
+                            str).tolist()
+                        if cleaned_phone in existing_numbers:
+                            st.error(
+                                "❌ This phone number already exists in recipients.csv")
+                            return
+
                     new_row = pd.DataFrame({
                         "name": [limited_name],
-                        "email": [email],
-                        "contact_number": [phone]
+                        "email": [cleaned_email],
+                        "contact_number": [cleaned_phone]
                     })
                     recipients_df = pd.concat(
                         [recipients_df, new_row], ignore_index=True)
@@ -147,11 +172,74 @@ def tab_recipients():
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
-            st.dataframe(df)
+            required_columns = {"name", "email", "contact_number"}
+            if not required_columns.issubset(set(df.columns)):
+                st.error("❌ CSV must include columns: name, email, contact_number")
+                return
+
+            cleaned_rows = []
+            invalid_rows = []
+
+            for row_number, (_, row) in enumerate(df.iterrows(), start=2):
+                name = limit_name_to_two_words(
+                    str(row.get("name", "")).strip())
+                email = str(row.get("email", "")).strip().lower()
+                raw_phone = str(row.get("contact_number", "")).strip()
+                phone = normalize_sl_phone_number(raw_phone)
+
+                row_errors = []
+                if not name:
+                    row_errors.append("Missing name")
+                if not is_valid_email(email):
+                    row_errors.append("Invalid email")
+                if not phone:
+                    row_errors.append("Invalid phone")
+
+                if row_errors:
+                    invalid_rows.append({
+                        "row": row_number,
+                        "name": name,
+                        "email": email,
+                        "contact_number": raw_phone,
+                        "errors": "; ".join(row_errors)
+                    })
+                else:
+                    cleaned_rows.append({
+                        "name": name,
+                        "email": email,
+                        "contact_number": phone
+                    })
+
+            cleaned_df = pd.DataFrame(cleaned_rows)
+
+            duplicate_count = 0
+            if not cleaned_df.empty:
+                before_count = len(cleaned_df)
+                cleaned_df = cleaned_df.drop_duplicates(
+                    subset=["contact_number"], keep="first")
+                duplicate_count = before_count - len(cleaned_df)
+
+            st.markdown("**Cleaned valid recipients preview**")
+            st.dataframe(cleaned_df, use_container_width=True)
+
+            if duplicate_count > 0:
+                st.info(
+                    f"ℹ️ Removed {duplicate_count} duplicate phone number(s) from valid rows.")
+
+            if invalid_rows:
+                st.warning(
+                    f"⚠️ Found {len(invalid_rows)} invalid row(s). These will not be saved.")
+                st.dataframe(pd.DataFrame(invalid_rows),
+                             use_container_width=True)
+
             if st.button("Save Uploaded CSV"):
-                df.to_csv("recipients.csv", index=False)
+                if cleaned_df.empty:
+                    st.error("❌ No valid recipients to save.")
+                    return
+                cleaned_df.to_csv("recipients.csv", index=False)
                 st.session_state.selected_csv = "recipients.csv"
-                st.success(f"✓ {len(df)} recipients loaded successfully!")
+                st.success(
+                    f"✓ {len(cleaned_df)} valid recipients saved successfully!")
                 st.rerun()
         except Exception as e:
             st.error(f"❌ Error processing CSV: {str(e)}")
