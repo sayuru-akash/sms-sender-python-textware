@@ -8,6 +8,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List
+
+import pandas as pd
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -478,6 +480,30 @@ class SMSSender:
             logger.error(f"❌ {error_msg}")
             raise FileNotFoundError(error_msg)
 
+        try:
+            with open(recipients_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                return self._send_bulk_rows(reader, message)
+        except csv.Error as e:
+            error_msg = f"Error reading CSV file: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        except Exception as e:
+            error_msg = f"Unexpected error during bulk SMS send: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            raise
+
+    def send_bulk_sms_dataframe(self, recipients_df: pd.DataFrame, message: str) -> Dict:
+        """Send SMS to multiple recipients from a dataframe."""
+        if recipients_df is None or recipients_df.empty:
+            raise ValueError("Recipients dataframe is empty")
+
+        records = recipients_df.fillna("").to_dict(orient="records")
+        return self._send_bulk_rows(records, message)
+
+    def _send_bulk_rows(self, rows, message: str) -> Dict:
+        """Send SMS to multiple recipients from row dictionaries."""
+
         results = {
             "total": 0,
             "successful": 0,
@@ -486,71 +512,67 @@ class SMSSender:
         }
 
         try:
-            with open(recipients_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                seen_numbers = set()
+            seen_numbers = set()
 
-                for row in reader:
-                    results["total"] += 1
+            for row in rows:
+                results["total"] += 1
 
-                    cleaned = sanitize_recipient(
-                        row.get("name", ""),
-                        row.get("email", ""),
-                        row.get("contact_number", "")
-                    )
+                cleaned = sanitize_recipient(
+                    row.get("name", ""),
+                    row.get("email", ""),
+                    row.get("contact_number", "")
+                )
 
-                    if not cleaned["is_valid"]:
-                        logger.warning(
-                            f"⚠ Skipping invalid recipient: {cleaned['name'] or 'Unknown'} ({'; '.join(cleaned['errors'])})")
-                        skipped_result = {
-                            "status": "skipped",
-                            "name": cleaned["name"],
-                            "email": cleaned["email"],
-                            "contact_number": row.get("contact_number", "").strip(),
-                            "reason": "; ".join(cleaned["errors"]),
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                        results["failed"] += 1
-                        results["details"].append(skipped_result)
-                        self.report_data.append(skipped_result)
-                        continue
+                if not cleaned["is_valid"]:
+                    logger.warning(
+                        f"⚠ Skipping invalid recipient: {cleaned['name'] or 'Unknown'} ({'; '.join(cleaned['errors'])})")
+                    skipped_result = {
+                        "status": "skipped",
+                        "name": cleaned["name"],
+                        "email": cleaned["email"],
+                        "contact_number": str(row.get("contact_number", "")).strip(),
+                        "reason": "; ".join(cleaned["errors"]),
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                    results["failed"] += 1
+                    results["details"].append(skipped_result)
+                    self.report_data.append(skipped_result)
+                    continue
 
-                    name = cleaned["name"]
-                    email = cleaned["email"]
-                    contact_number = cleaned["contact_number"]
+                name = cleaned["name"]
+                email = cleaned["email"]
+                contact_number = cleaned["contact_number"]
 
-                    if contact_number in seen_numbers:
-                        logger.warning(
-                            f"⚠ Skipping duplicate phone number: {contact_number} ({name})")
-                        skipped_result = {
-                            "status": "skipped",
-                            "name": name,
-                            "email": email,
-                            "contact_number": contact_number,
-                            "reason": "Duplicate contact number",
-                            "timestamp": datetime.now().isoformat(),
-                        }
-                        results["failed"] += 1
-                        results["details"].append(skipped_result)
-                        self.report_data.append(skipped_result)
-                        continue
+                if contact_number in seen_numbers:
+                    logger.warning(
+                        f"⚠ Skipping duplicate phone number: {contact_number} ({name})")
+                    skipped_result = {
+                        "status": "skipped",
+                        "name": name,
+                        "email": email,
+                        "contact_number": contact_number,
+                        "reason": "Duplicate contact number",
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                    results["failed"] += 1
+                    results["details"].append(skipped_result)
+                    self.report_data.append(skipped_result)
+                    continue
 
-                    seen_numbers.add(contact_number)
+                seen_numbers.add(contact_number)
 
-                    # Personalize message
-                    personalized_message = message.replace(
-                        "{name}", name) if name else message
+                personalized_message = message.replace(
+                    "{name}", name) if name else message
 
-                    # Send SMS
-                    result = self.send_sms(
-                        contact_number, personalized_message, name, email)
+                result = self.send_sms(
+                    contact_number, personalized_message, name, email)
 
-                    if result["status"] == "success":
-                        results["successful"] += 1
-                    else:
-                        results["failed"] += 1
+                if result["status"] == "success":
+                    results["successful"] += 1
+                else:
+                    results["failed"] += 1
 
-                    results["details"].append(result)
+                results["details"].append(result)
 
             logger.info(f"\n{'='*60}")
             logger.info(f"📊 BULK SMS CAMPAIGN COMPLETED")
@@ -560,10 +582,6 @@ class SMSSender:
             logger.info(f"❌ Failed: {results['failed']}")
             logger.info(f"{'='*60}\n")
 
-        except csv.Error as e:
-            error_msg = f"Error reading CSV file: {str(e)}"
-            logger.error(f"❌ {error_msg}")
-            raise ValueError(error_msg)
         except Exception as e:
             error_msg = f"Unexpected error during bulk SMS send: {str(e)}"
             logger.error(f"❌ {error_msg}")

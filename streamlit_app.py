@@ -17,6 +17,7 @@ from sms_sender import (
 REQUIRED_RECIPIENT_COLUMNS = ["name", "email", "contact_number"]
 DEFAULT_SAMPLE_CSV = "sample-recipients.csv"
 DEFAULT_UPLOAD_CSV = "recipients.csv"
+MEMORY_SOURCE = "__memory__"
 REQUIRED_ENV_VARS = ["SMS_USERNAME", "SMS_PASSWORD", "SMS_SOURCE", "SMS_API_URL"]
 
 st.set_page_config(
@@ -67,7 +68,16 @@ def apply_theme():
         [data-testid="stSidebar"] * {
             color: var(--text);
         }
-        h1, h2, h3, h4, h5, h6, label, p, span, div {
+        .stApp,
+        .stApp h1,
+        .stApp h2,
+        .stApp h3,
+        .stApp h4,
+        .stApp h5,
+        .stApp h6,
+        .stApp label,
+        .stApp p,
+        .stApp span {
             color: var(--text);
         }
         [data-testid="stMarkdownContainer"] p,
@@ -153,6 +163,22 @@ def apply_theme():
             background: rgba(17, 24, 39, 0.92);
             border-color: var(--border);
         }
+        .stSelectbox [data-baseweb="select"] > div,
+        .stSelectbox [data-baseweb="select"] input,
+        .stSelectbox [data-baseweb="select"] span {
+            color: var(--text) !important;
+        }
+        div[role="listbox"] {
+            background: rgba(17, 24, 39, 0.98) !important;
+            border: 1px solid var(--border) !important;
+        }
+        div[role="option"] {
+            background: transparent !important;
+            color: var(--text) !important;
+        }
+        div[role="option"][aria-selected="true"] {
+            background: rgba(56, 189, 248, 0.12) !important;
+        }
         .stTextInput input,
         .stTextArea textarea {
             color: var(--text);
@@ -198,8 +224,19 @@ def apply_theme():
 
 def ensure_session_state():
     """Initialize persistent UI state."""
-    if "selected_csv" not in st.session_state:
-        st.session_state.selected_csv = DEFAULT_SAMPLE_CSV
+    if "selected_source" not in st.session_state:
+        if Path(DEFAULT_SAMPLE_CSV).exists():
+            st.session_state.selected_source = DEFAULT_SAMPLE_CSV
+        elif Path(DEFAULT_UPLOAD_CSV).exists():
+            st.session_state.selected_source = DEFAULT_UPLOAD_CSV
+        else:
+            st.session_state.selected_source = DEFAULT_SAMPLE_CSV
+    if "pending_selected_source" not in st.session_state:
+        st.session_state.pending_selected_source = None
+    if "imported_recipients" not in st.session_state:
+        st.session_state.imported_recipients = None
+    if "imported_label" not in st.session_state:
+        st.session_state.imported_label = "Imported (unsaved)"
     if "draft_message" not in st.session_state:
         st.session_state.draft_message = get_sms_message()
     if "campaign_rate_limit" not in st.session_state:
@@ -211,7 +248,7 @@ def load_recipients(file_path=None):
     target = file_path or DEFAULT_UPLOAD_CSV
     try:
         if Path(target).exists():
-            return pd.read_csv(target)
+            return pd.read_csv(target, dtype=str).fillna("")
         return pd.DataFrame()
     except Exception as exc:
         st.error(f"Error loading recipients: {exc}")
@@ -225,7 +262,35 @@ def get_available_csvs():
         options.append(("Sample", DEFAULT_SAMPLE_CSV))
     if Path(DEFAULT_UPLOAD_CSV).exists():
         options.append(("Uploaded", DEFAULT_UPLOAD_CSV))
+    if st.session_state.get("imported_recipients") is not None:
+        options.append((st.session_state.get("imported_label", "Imported (unsaved)"), MEMORY_SOURCE))
     return options
+
+
+def set_selected_source(source):
+    """Queue a source update for the next rerun."""
+    st.session_state.selected_source = source
+    st.session_state.pending_selected_source = source
+
+
+def get_current_recipients():
+    """Return active source id, label, and dataframe."""
+    source = st.session_state.selected_source
+    label_by_source = {value: label for label, value in get_available_csvs()}
+
+    if source == MEMORY_SOURCE:
+        imported_df = st.session_state.get("imported_recipients")
+        if imported_df is not None:
+            return source, label_by_source.get(source, "Imported (unsaved)"), imported_df.copy()
+        if Path(DEFAULT_SAMPLE_CSV).exists():
+            source = DEFAULT_SAMPLE_CSV
+        elif Path(DEFAULT_UPLOAD_CSV).exists():
+            source = DEFAULT_UPLOAD_CSV
+        else:
+            source = DEFAULT_SAMPLE_CSV
+        st.session_state.selected_source = source
+
+    return source, label_by_source.get(source, source), load_recipients(source)
 
 
 def load_reports():
@@ -385,13 +450,15 @@ def render_sidebar(current_file, recipients_df, env_vars):
             (label for label, path in available_csvs if path == current_file),
             labels[0],
         )
+        if st.session_state.get("csv_selector") not in labels:
+            st.session_state.csv_selector = current_label
         selected_label = st.selectbox(
             "Recipients file",
             labels,
             index=labels.index(current_label),
             key="csv_selector",
         )
-        st.session_state.selected_csv = paths[selected_label]
+        st.session_state.selected_source = paths[selected_label]
     else:
         st.warning("No CSV found.")
 
@@ -469,7 +536,7 @@ def render_dashboard_tab(current_file, recipients_df, env_vars, reports):
             st.caption("Use Recipients, then Campaign, then Reports.")
 
 
-def render_recipients_tab(current_file, recipients_df):
+def render_recipients_tab(current_source, current_label, recipients_df):
     """Recipients management."""
     top_left, top_right = st.columns([1.4, 1], gap="large")
 
@@ -483,7 +550,7 @@ def render_recipients_tab(current_file, recipients_df):
             else:
                 missing_columns = get_missing_columns(recipients_df)
                 if missing_columns:
-                    st.error(f"{current_file} is missing: {', '.join(missing_columns)}")
+                    st.error(f"{current_label} is missing: {', '.join(missing_columns)}")
                 else:
                     visible_df = recipients_df[REQUIRED_RECIPIENT_COLUMNS].copy()
                     if search:
@@ -496,7 +563,7 @@ def render_recipients_tab(current_file, recipients_df):
                     st.download_button(
                         "Download CSV",
                         data=visible_df.to_csv(index=False).encode("utf-8"),
-                        file_name=current_file,
+                        file_name="imported_recipients.csv" if current_source == MEMORY_SOURCE else current_source,
                         mime="text/csv",
                     )
 
@@ -521,6 +588,31 @@ def render_recipients_tab(current_file, recipients_df):
                     elif not cleaned_phone:
                         st.error("Invalid Sri Lanka mobile number.")
                     else:
+                        if current_source == MEMORY_SOURCE and st.session_state.get("imported_recipients") is not None:
+                            target_df = st.session_state.imported_recipients.copy()
+                            existing_numbers = (
+                                target_df["contact_number"].astype(str).tolist()
+                                if not target_df.empty
+                                else []
+                            )
+                            if cleaned_phone in existing_numbers:
+                                st.error("Phone number already exists.")
+                            else:
+                                new_row = pd.DataFrame(
+                                    {
+                                        "name": [limited_name],
+                                        "email": [cleaned_email],
+                                        "contact_number": [cleaned_phone],
+                                    }
+                                )
+                                st.session_state.imported_recipients = pd.concat(
+                                    [target_df, new_row], ignore_index=True
+                                )
+                                set_selected_source(MEMORY_SOURCE)
+                                st.success("Recipient added to imported list.")
+                                st.rerun()
+                            return
+
                         target_df = (
                             load_recipients(DEFAULT_UPLOAD_CSV)
                             if Path(DEFAULT_UPLOAD_CSV).exists()
@@ -547,7 +639,7 @@ def render_recipients_tab(current_file, recipients_df):
                                 )
                                 target_df = pd.concat([target_df, new_row], ignore_index=True)
                                 target_df.to_csv(DEFAULT_UPLOAD_CSV, index=False)
-                                st.session_state.selected_csv = DEFAULT_UPLOAD_CSV
+                                set_selected_source(DEFAULT_UPLOAD_CSV)
                                 st.success("Recipient saved to recipients.csv.")
                                 st.rerun()
 
@@ -557,7 +649,7 @@ def render_recipients_tab(current_file, recipients_df):
 
         if uploaded_file is not None:
             try:
-                uploaded_df = pd.read_csv(uploaded_file)
+                uploaded_df = pd.read_csv(uploaded_file, dtype=str).fillna("")
             except Exception as exc:
                 st.error(f"Could not read CSV: {exc}")
                 return
@@ -589,11 +681,20 @@ def render_recipients_tab(current_file, recipients_df):
                 else:
                     st.dataframe(invalid_df, width="stretch", hide_index=True)
 
-            if st.button("Save as recipients.csv", disabled=cleaned_df.empty):
-                cleaned_df.to_csv(DEFAULT_UPLOAD_CSV, index=False)
-                st.session_state.selected_csv = DEFAULT_UPLOAD_CSV
-                st.success(f"Saved {len(cleaned_df)} row(s) to recipients.csv.")
-                st.rerun()
+            action_left, action_right = st.columns(2)
+            with action_left:
+                if st.button("Use now", disabled=cleaned_df.empty):
+                    st.session_state.imported_recipients = cleaned_df.copy()
+                    st.session_state.imported_label = f"Imported ({uploaded_file.name})"
+                    set_selected_source(MEMORY_SOURCE)
+                    st.success(f"Using {len(cleaned_df)} row(s) without saving a file.")
+                    st.rerun()
+            with action_right:
+                if st.button("Save as recipients.csv", disabled=cleaned_df.empty):
+                    cleaned_df.to_csv(DEFAULT_UPLOAD_CSV, index=False)
+                    set_selected_source(DEFAULT_UPLOAD_CSV)
+                    st.success(f"Saved {len(cleaned_df)} row(s) to recipients.csv.")
+                    st.rerun()
 
 
 def render_campaign_tab(current_file, recipients_df):
@@ -681,7 +782,10 @@ def render_campaign_tab(current_file, recipients_df):
                     with st.spinner("Sending campaign..."):
                         sender = SMSSender()
                         sender.rate_limit_delay = rate_limit
-                        results = sender.send_bulk_sms(current_file, message)
+                        if current_file == MEMORY_SOURCE:
+                            results = sender.send_bulk_sms_dataframe(recipients_df, message)
+                        else:
+                            results = sender.send_bulk_sms(current_file, message)
                         report_path = sender.save_report()
                     result_row = st.columns(3)
                     with result_row[0]:
@@ -739,7 +843,7 @@ def render_reports_tab(reports):
         )
 
 
-def render_settings_tab(env_vars, reports):
+def render_settings_tab(current_label, env_vars, reports):
     """Read-only operational settings."""
     left, right = st.columns([1, 1], gap="large")
 
@@ -768,7 +872,7 @@ def render_settings_tab(env_vars, reports):
             log_files = list(Path("logs").glob("*.log")) if Path("logs").exists() else []
             st.metric("Logs", len(log_files))
             st.metric("Reports", len(reports))
-            st.metric("Selected CSV", st.session_state.selected_csv)
+            st.metric("Selected source", current_label)
             st.caption("Use `python main.py --streamlit` from the active venv.")
 
 
@@ -777,29 +881,35 @@ def main():
     apply_theme()
     ensure_session_state()
 
+    pending_selected_source = st.session_state.pending_selected_source
+    if pending_selected_source:
+        st.session_state.selected_source = pending_selected_source
+        label_by_path = {csv_path: label for label, csv_path in get_available_csvs()}
+        if pending_selected_source in label_by_path:
+            st.session_state.csv_selector = label_by_path[pending_selected_source]
+        st.session_state.pending_selected_source = None
+
     env_vars = parse_env_file()
-    current_file = st.session_state.selected_csv
-    recipients_df = load_recipients(current_file)
+    current_file, current_label, recipients_df = get_current_recipients()
     reports = load_reports()
 
     with st.sidebar:
         render_sidebar(current_file, recipients_df, env_vars)
 
-    current_file = st.session_state.selected_csv
-    recipients_df = load_recipients(current_file)
+    current_file, current_label, recipients_df = get_current_recipients()
     reports = load_reports()
 
-    render_header(current_file, recipients_df, env_vars, reports)
+    render_header(current_label, recipients_df, env_vars, reports)
 
     dashboard_tab, recipients_tab, campaign_tab, reports_tab, settings_tab = st.tabs(
         ["Dashboard", "Recipients", "Campaign", "Reports", "Settings"]
     )
 
     with dashboard_tab:
-        render_dashboard_tab(current_file, recipients_df, env_vars, reports)
+        render_dashboard_tab(current_label, recipients_df, env_vars, reports)
 
     with recipients_tab:
-        render_recipients_tab(current_file, recipients_df)
+        render_recipients_tab(current_file, current_label, recipients_df)
 
     with campaign_tab:
         render_campaign_tab(current_file, recipients_df)
@@ -808,7 +918,7 @@ def main():
         render_reports_tab(reports)
 
     with settings_tab:
-        render_settings_tab(env_vars, reports)
+        render_settings_tab(current_label, env_vars, reports)
 
 
 if __name__ == "__main__":
