@@ -48,7 +48,7 @@ def load_recipients(file_path=None):
     try:
         if file_path is None:
             file_path = "recipients.csv"
-        
+
         if Path(file_path).exists():
             return pd.read_csv(file_path)
         return pd.DataFrame()
@@ -60,15 +60,15 @@ def load_recipients(file_path=None):
 def get_available_csvs():
     """Get list of available CSV files"""
     csvs = []
-    
+
     # Add sample recipients
     if Path("sample-recipients.csv").exists():
         csvs.append(("📄 sample-recipients.csv", "sample-recipients.csv"))
-    
+
     # Add uploaded recipients
     if Path("recipients.csv").exists():
         csvs.append(("📤 recipients.csv (uploaded)", "recipients.csv"))
-    
+
     return csvs
 
 
@@ -93,23 +93,24 @@ def display_header():
 def tab_recipients():
     """Manage recipients"""
     st.header("👥 Recipients Management")
-    
+
     # Show current selected file
-    current_file = st.session_state.get("selected_csv", "sample-recipients.csv")
+    current_file = st.session_state.get(
+        "selected_csv", "sample-recipients.csv")
     st.info(f"Currently using: **{current_file}**")
-    
+
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
         st.subheader("Current Recipients")
         recipients_df = load_recipients(current_file)
-        
+
         if not recipients_df.empty:
             st.dataframe(recipients_df, use_container_width=True)
             st.markdown(f"**Total Recipients:** {len(recipients_df)}")
         else:
             st.info("No recipients loaded yet. Create or upload a CSV file.")
-    
+
     with col2:
         st.subheader("Add New Recipient")
         with st.form("add_recipient"):
@@ -117,24 +118,26 @@ def tab_recipients():
             email = st.text_input("Email")
             phone = st.text_input("Contact Number")
             submitted = st.form_submit_button("Add Recipient")
-            
+
             if submitted and name and email and phone:
                 try:
                     # Always add to recipients.csv
-                    recipients_df = load_recipients("recipients.csv") if Path("recipients.csv").exists() else pd.DataFrame()
+                    recipients_df = load_recipients("recipients.csv") if Path(
+                        "recipients.csv").exists() else pd.DataFrame()
                     new_row = pd.DataFrame({
                         "name": [name],
                         "email": [email],
                         "contact_number": [phone]
                     })
-                    recipients_df = pd.concat([recipients_df, new_row], ignore_index=True)
+                    recipients_df = pd.concat(
+                        [recipients_df, new_row], ignore_index=True)
                     recipients_df.to_csv("recipients.csv", index=False)
                     st.success(f"✓ {name} added successfully!")
                     st.session_state.selected_csv = "recipients.csv"
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Error adding recipient: {str(e)}")
-    
+
     # Upload CSV
     st.divider()
     st.subheader("📤 Upload Recipients CSV")
@@ -155,32 +158,34 @@ def tab_recipients():
 def tab_campaigns():
     """Create and manage campaigns"""
     st.header("📧 Campaign Management")
-    
-    current_file = st.session_state.get("selected_csv", "sample-recipients.csv")
-    
+
+    current_file = st.session_state.get(
+        "selected_csv", "sample-recipients.csv")
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.subheader("Message Template")
         default_message = get_sms_message()
-        
+
         message = st.text_area(
             "SMS Message",
             value=default_message,
             height=250,
             help="Use {name} placeholder for personalization"
         )
-        
+
         char_count = len(message)
-        st.caption(f"Characters: {char_count} | SMS Parts: {(char_count // 160) + 1}")
-    
+        st.caption(
+            f"Characters: {char_count} | SMS Parts: {(char_count // 160) + 1}")
+
     with col2:
         st.subheader("Campaign Settings")
-        
+
         recipients_df = load_recipients(current_file)
         st.metric("Recipients to Send", len(recipients_df))
         st.caption(f"Using: **{current_file}**")
-        
+
         rate_limit = st.slider(
             "Rate Limit (seconds between SMS)",
             min_value=1,
@@ -188,23 +193,24 @@ def tab_campaigns():
             value=2,
             help="Prevent API overload by adding delay between sends"
         )
-        
+
         st.info("ℹ️ **Preview Recipients:**")
-        st.dataframe(recipients_df[["name", "contact_number"]], use_container_width=True)
-    
+        st.dataframe(
+            recipients_df[["name", "contact_number"]], use_container_width=True)
+
     st.divider()
-    
+
     # Test send
     st.subheader("🧪 Test Send")
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
         test_recipient = st.selectbox(
             "Select recipient for test",
             options=range(len(recipients_df)),
             format_func=lambda i: f"{recipients_df.iloc[i]['name']} ({recipients_df.iloc[i]['contact_number']})"
         ) if not recipients_df.empty else None
-    
+
     with col2:
         st.write("")
         st.write("")
@@ -214,15 +220,16 @@ def tab_campaigns():
                     with st.spinner("Sending test SMS..."):
                         sender = SMSSender()
                         recipient = recipients_df.iloc[test_recipient]
-                        personalized_msg = message.replace("{name}", recipient['name'])
-                        
+                        personalized_msg = message.replace(
+                            "{name}", recipient['name'])
+
                         result = sender.send_sms(
                             phone_number=recipient['contact_number'],
                             message=personalized_msg,
                             name=recipient['name'],
                             email=recipient['email']
                         )
-                        
+
                         if result["status"] == "success":
                             st.success("✓ Test SMS sent successfully!")
                             st.json(result)
@@ -231,22 +238,23 @@ def tab_campaigns():
                             st.json(result)
                 except Exception as e:
                     st.error(f"❌ Error sending test SMS: {str(e)}")
-    
+
     st.divider()
-    
+
     # Send campaign
     st.subheader("🚀 Send Campaign")
-    
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.warning(f"⚠️ This will send SMS to {len(recipients_df)} recipients")
-    
+
     with col2:
         st.write("")
         st.write("")
-        confirm = st.checkbox("I confirm sending to all recipients", key="confirm_send")
-    
+        confirm = st.checkbox(
+            "I confirm sending to all recipients", key="confirm_send")
+
     with col3:
         st.write("")
         st.write("")
@@ -258,9 +266,9 @@ def tab_campaigns():
                         sender.rate_limit_delay = rate_limit
                         results = sender.send_bulk_sms(current_file, message)
                         report_path = sender.save_report()
-                        
+
                         st.success("✓ Campaign completed!")
-                        
+
                         col1, col2, col3 = st.columns(3)
                         with col1:
                             st.metric("Total Sent", results["total"])
@@ -268,9 +276,9 @@ def tab_campaigns():
                             st.metric("Successful", results["successful"])
                         with col3:
                             st.metric("Failed", results["failed"])
-                        
+
                         st.info(f"📄 Report saved: {report_path}")
-                        
+
                 except Exception as e:
                     st.error(f"❌ Campaign failed: {str(e)}")
             else:
@@ -280,20 +288,20 @@ def tab_campaigns():
 def tab_reports():
     """View reports"""
     st.header("📊 Reports & History")
-    
+
     reports = load_reports()
-    
+
     if reports:
         selected_report = st.selectbox(
             "Select Report",
             options=reports,
             format_func=lambda x: x.name
         )
-        
+
         try:
             with open(selected_report, 'r') as f:
                 report_data = json.load(f)
-            
+
             # Summary
             col1, col2, col3, col4 = st.columns(4)
             with col1:
@@ -304,14 +312,14 @@ def tab_reports():
                 st.metric("Successful", report_data["successful"])
             with col4:
                 st.metric("Failed", report_data["failed"])
-            
+
             st.divider()
-            
+
             # Details
             st.subheader("Details")
             details_df = pd.DataFrame(report_data["details"])
             st.dataframe(details_df, use_container_width=True)
-            
+
             # Download report
             st.download_button(
                 label="📥 Download Report JSON",
@@ -319,7 +327,7 @@ def tab_reports():
                 file_name=f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                 mime="application/json"
             )
-            
+
         except Exception as e:
             st.error(f"❌ Error loading report: {str(e)}")
     else:
@@ -329,32 +337,35 @@ def tab_reports():
 def tab_settings():
     """Application settings"""
     st.header("⚙️ Settings")
-    
+
     st.subheader("🔐 SMS API Configuration")
-    
+
     # Check .env file
     if Path(".env").exists():
         st.success("✓ .env file found")
-        
+
         env_vars = {}
         with open(".env") as f:
             for line in f:
                 if "=" in line and not line.startswith("#"):
                     key, value = line.strip().split("=", 1)
                     env_vars[key] = value
-        
+
         col1, col2 = st.columns(2)
         with col1:
-            st.text_input("SMS Username", value=env_vars.get("SMS_USERNAME", ""), disabled=True)
+            st.text_input("SMS Username", value=env_vars.get(
+                "SMS_USERNAME", ""), disabled=True)
         with col2:
-            st.text_input("SMS Source", value=env_vars.get("SMS_SOURCE", ""), disabled=True)
-        
-        st.text_input("API URL", value=env_vars.get("SMS_API_URL", ""), disabled=True)
+            st.text_input("SMS Source", value=env_vars.get(
+                "SMS_SOURCE", ""), disabled=True)
+
+        st.text_input("API URL", value=env_vars.get(
+            "SMS_API_URL", ""), disabled=True)
     else:
         st.error("❌ .env file not found. Please create it with SMS credentials.")
-    
+
     st.subheader("📁 Directories")
-    
+
     col1, col2 = st.columns(2)
     with col1:
         logs_exist = Path("logs").exists()
@@ -363,7 +374,7 @@ def tab_settings():
             st.metric("Log Files", len(log_files))
         else:
             st.info("No logs yet")
-    
+
     with col2:
         reports_exist = Path("reports").exists()
         if reports_exist:
@@ -375,43 +386,45 @@ def tab_settings():
 
 def main():
     """Main app"""
-    
+
     # Initialize session state
     if "selected_csv" not in st.session_state:
         st.session_state.selected_csv = "sample-recipients.csv"
-    
+
     # Sidebar - CSV Selection
     with st.sidebar:
         st.subheader("📋 Select Recipients File")
-        
+
         available_csvs = get_available_csvs()
-        
+
         if available_csvs:
             csv_options = {label: path for label, path in available_csvs}
             selected_label = st.selectbox(
                 "Choose a recipients CSV file:",
                 options=csv_options.keys(),
                 index=list(csv_options.keys()).index(
-                    next((label for label, path in available_csvs if path == st.session_state.selected_csv), available_csvs[0][0])
+                    next((label for label, path in available_csvs if path ==
+                         st.session_state.selected_csv), available_csvs[0][0])
                 ) if available_csvs else 0,
                 key="csv_selector"
             )
             st.session_state.selected_csv = csv_options[selected_label]
-            
+
             # Show file info
             selected_file = st.session_state.selected_csv
             df = load_recipients(selected_file)
             st.metric("Recipients Count", len(df))
         else:
-            st.warning("No CSV files found. Please upload a file or use the sample.")
+            st.warning(
+                "No CSV files found. Please upload a file or use the sample.")
             st.session_state.selected_csv = "sample-recipients.csv"
-        
+
         st.divider()
-    
+
     display_header()
-    
+
     st.divider()
-    
+
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "👥 Recipients",
         "📧 Campaigns",
@@ -419,22 +432,22 @@ def main():
         "⚙️ Settings",
         "ℹ️ Help"
     ])
-    
+
     with tab1:
         tab_recipients()
-    
+
     with tab2:
         tab_campaigns()
-    
+
     with tab3:
         tab_reports()
-    
+
     with tab4:
         tab_settings()
-    
+
     with tab5:
         st.header("ℹ️ Help & Guide")
-        
+
         st.subheader("🚀 Getting Started")
         st.markdown("""
         1. **Add Recipients** - Go to the Recipients tab and add or upload a CSV file
@@ -458,7 +471,7 @@ def main():
         - ✅ Test send before campaign launch
         - ✅ JSON reports for audit trail
         """)
-        
+
         st.subheader("📞 SMS API Details")
         st.info("""
         **API:** Text-Ware SMS Gateway
@@ -472,4 +485,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
