@@ -1,5 +1,10 @@
 # 📱 SMS Campaign Manager
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Streamlit 1.55](https://img.shields.io/badge/streamlit-1.55-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Pytest](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)](https://pytest.org/)
+[![Last Commit](https://img.shields.io/github/last-commit/sayuru-akash/sms-sender-python-textware)](https://github.com/sayuru-akash/sms-sender-python-textware)
+
 **Complete SMS sending solution** with rate limiting, retry logic, error handling, logging, and reporting.
 
 ---
@@ -29,6 +34,7 @@ Sends personalized SMS messages to recipients from CSV files using the Text-Ware
 **Features:**
 
 - ✅ Flexible CSV selection (sample or uploaded)
+- ✅ Unsaved imported recipient lists can be used immediately
 - ✅ Single & bulk SMS sending
 - ✅ Automatic name personalization {name}
 - ✅ Smart name handling - limits to first 2 words
@@ -59,6 +65,8 @@ sms-sender-python-textware/
 ├── sample-recipients.csv  Sample data (always available)
 ├── recipients.csv         Uploaded recipients (created on upload)
 ├── requirements.txt       Python dependencies
+├── pytest.ini             Pytest configuration
+├── tests/                 Automated test suite
 ├── README.md              This documentation
 └── venv/                  Virtual environment
 
@@ -94,6 +102,7 @@ python -m streamlit run streamlit_app.py
 - **🔄 CSV File Selection**: Switch between:
   - `sample-recipients.csv` (default, always available)
   - `recipients.csv` (your uploaded custom file)
+  - `Imported (...)` (temporary in-memory upload)
 - **📊 View Recipients**: Table showing all current recipients
 - **➕ Add Recipient**: Single form entry for one person
 - **📤 Upload CSV**: Upload custom recipients file
@@ -160,8 +169,8 @@ result = sender.send_sms("0768622302", message, "Name", "email@example.com")
 1. Go to **Recipients Tab**
 2. Click **Upload Recipients CSV**
 3. Select your CSV file
-4. Click **Save Uploaded CSV**
-5. File becomes `recipients.csv` and is automatically selected for campaigns
+4. Choose **Use now** to work from the cleaned upload immediately without saving a file
+5. Or choose **Save as recipients.csv** if you want it persisted on disk
 
 ### CSV Format Required
 
@@ -190,7 +199,8 @@ Upload behavior:
 
 - CSV importer auto-cleans name, email, and phone fields
 - Invalid rows are shown with row numbers and reasons
-- Only valid cleaned rows are saved to recipients.csv
+- Valid cleaned rows can be used immediately as a temporary imported source
+- Saving to `recipients.csv` is optional
 - Duplicate phone numbers are automatically deduplicated (first row kept)
 
 **Name Handling:**
@@ -377,6 +387,33 @@ tail -f logs/sms_sender_*.log
 
 ## 🧪 Testing
 
+### Automated Test Suite
+
+Run the full suite:
+
+```bash
+pytest
+```
+
+Run with coverage:
+
+```bash
+pytest --cov=. --cov-report=term-missing
+```
+
+The suite covers:
+
+- core SMS sender helpers and API-request behavior
+- bulk sending, reports, and fallback paths
+- CLI entry points in `main.py`
+- quickstart/menu flows in `quickstart.py`
+- Streamlit app state and recipient workflows
+
+Current local verification:
+
+- `59` tests passing
+- `83%` total coverage from `pytest --cov=. --cov-report=term-missing`
+
 ### Quick Test: Web Dashboard
 
 ```bash
@@ -518,6 +555,8 @@ python-dotenv      # Environment variables
 pandas             # CSV handling
 streamlit          # Web dashboard
 watchdog           # Faster Streamlit file watching on macOS/Linux
+pytest             # Test runner
+pytest-cov         # Coverage reporting
 ```
 
 **Install all:**
