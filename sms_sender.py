@@ -55,7 +55,8 @@ We look forward to having you with us tonight.
 SITC Campus X CodeZela"""
 MESSAGE_TEMPLATE_FILE = RESOURCES_DIR / "message_template.txt"
 LEGACY_MESSAGE_TEMPLATE_FILE = APP_DIR / "message_template.txt"
-OPERATION_ID_PATTERN = re.compile(r"Operation success:\s*([A-Za-z0-9_-]+)", re.IGNORECASE)
+OPERATION_ID_PATTERN = re.compile(
+    r"Operation success:\s*([A-Za-z0-9_-]+)", re.IGNORECASE)
 RECIPIENT_FIELDS = ["name", "email", "contact_number"]
 
 
@@ -190,7 +191,7 @@ def annotate_gateway_acceptance(result: Dict) -> Dict:
 class SMSSender:
     """SMS Sender with rate limiting, retrying, and comprehensive error handling"""
 
-    def __init__(self):
+    def __init__(self, progress_callback=None):
         self.username = os.getenv("SMS_USERNAME") or ""
         self.password = os.getenv("SMS_PASSWORD") or ""
         self.source = os.getenv("SMS_SOURCE") or ""
@@ -198,6 +199,8 @@ class SMSSender:
         self.rate_limit_delay = 2  # Delay in seconds between SMS sends
         self.max_retries = 3
         self.timeout = 30
+        # Optional callback for progress updates
+        self.progress_callback = progress_callback
 
         # Validate credentials
         self._validate_credentials()
@@ -586,9 +589,20 @@ class SMSSender:
 
         try:
             seen_numbers = set()
+            current_index = 0
 
             for row in rows:
                 results["total"] += 1
+                current_index += 1
+
+                # Notify progress callback
+                if self.progress_callback:
+                    self.progress_callback({
+                        "current": current_index,
+                        "total": results["total"],
+                        "status": "processing",
+                        "recipient_info": f"{row.get('name', 'N/A')} ({row.get('contact_number', 'N/A')})"
+                    })
 
                 cleaned = sanitize_recipient(
                     row.get("name", ""),
@@ -645,6 +659,18 @@ class SMSSender:
                     results["failed"] += 1
 
                 results["details"].append(result)
+                self.report_data.append(result)
+
+                # Notify progress callback after sending
+                if self.progress_callback:
+                    self.progress_callback({
+                        "current": current_index,
+                        "total": results["total"],
+                        "successful": results["successful"],
+                        "failed": results["failed"],
+                        "status": "sent" if result["status"] == "success" else "failed",
+                        "recipient_info": f"{name} ({contact_number})"
+                    })
 
             logger.info(f"\n{'='*60}")
             logger.info(f"📊 BULK SMS CAMPAIGN COMPLETED")
@@ -703,13 +729,16 @@ def load_message_template(template_path: str | Path | None = None) -> str:
             message = target_path.read_text(encoding="utf-8").strip()
             if message:
                 return message
-            logger.warning("Message template file is empty: %s. Trying next fallback.", target_path)
+            logger.warning(
+                "Message template file is empty: %s. Trying next fallback.", target_path)
         except FileNotFoundError:
             continue
         except OSError as exc:
-            logger.warning("Failed to read message template file %s: %s. Trying next fallback.", target_path, exc)
+            logger.warning(
+                "Failed to read message template file %s: %s. Trying next fallback.", target_path, exc)
 
-    logger.warning("No message template file could be loaded. Falling back to built-in default.")
+    logger.warning(
+        "No message template file could be loaded. Falling back to built-in default.")
 
     return DEFAULT_MESSAGE_TEMPLATE
 

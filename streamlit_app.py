@@ -278,12 +278,15 @@ def resolve_csv_path(file_path):
 
 def ensure_recipient_dataframe(df):
     """Return a dataframe with the supported recipient columns present."""
-    normalized_df = (df.copy() if df is not None else pd.DataFrame()).fillna("")
+    normalized_df = (
+        df.copy() if df is not None else pd.DataFrame()).fillna("")
     for column in [column for column in RECIPIENT_COLUMNS if column != "contact_number"]:
         if column not in normalized_df.columns:
             normalized_df[column] = ""
-    ordered_columns = [column for column in RECIPIENT_COLUMNS if column in normalized_df.columns]
-    remaining_columns = [column for column in normalized_df.columns if column not in ordered_columns]
+    ordered_columns = [
+        column for column in RECIPIENT_COLUMNS if column in normalized_df.columns]
+    remaining_columns = [
+        column for column in normalized_df.columns if column not in ordered_columns]
     return normalized_df[ordered_columns + remaining_columns]
 
 
@@ -606,7 +609,8 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                     st.error(
                         f"{current_label} is missing: {', '.join(missing_columns)}")
                 else:
-                    visible_df = ensure_recipient_dataframe(recipients_df)[RECIPIENT_COLUMNS].copy()
+                    visible_df = ensure_recipient_dataframe(
+                        recipients_df)[RECIPIENT_COLUMNS].copy()
                     if search:
                         matches = visible_df.astype(str).apply(
                             lambda col: col.str.contains(
@@ -642,7 +646,8 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                         st.error("Invalid Sri Lanka mobile number.")
                     else:
                         if current_source == MEMORY_SOURCE and st.session_state.get("imported_recipients") is not None:
-                            target_df = ensure_recipient_dataframe(st.session_state.imported_recipients.copy())
+                            target_df = ensure_recipient_dataframe(
+                                st.session_state.imported_recipients.copy())
                             existing_numbers = (
                                 target_df["contact_number"].astype(
                                     str).tolist()
@@ -668,7 +673,8 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                             return
 
                         target_df = (
-                            ensure_recipient_dataframe(load_recipients(DEFAULT_UPLOAD_CSV))
+                            ensure_recipient_dataframe(
+                                load_recipients(DEFAULT_UPLOAD_CSV))
                             if Path(DEFAULT_UPLOAD_CSV).exists()
                             else pd.DataFrame(columns=RECIPIENT_COLUMNS)
                         )
@@ -735,7 +741,8 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                 if cleaned_df.empty:
                     st.info("No valid rows.")
                 else:
-                    st.dataframe(ensure_recipient_dataframe(cleaned_df)[RECIPIENT_COLUMNS], width="stretch", hide_index=True)
+                    st.dataframe(ensure_recipient_dataframe(cleaned_df)[
+                                 RECIPIENT_COLUMNS], width="stretch", hide_index=True)
             with invalid_tab:
                 if invalid_df.empty:
                     st.success("No invalid rows.")
@@ -809,7 +816,8 @@ def render_campaign_tab(current_file, recipients_df):
             preview_index = st.selectbox(
                 "Preview recipient",
                 options=range(len(recipients_df)),
-                format_func=lambda idx: format_recipient_label(recipients_df.iloc[idx].to_dict()),
+                format_func=lambda idx: format_recipient_label(
+                    recipients_df.iloc[idx].to_dict()),
                 key="preview_recipient",
             )
             preview_message = personalize_message(
@@ -835,7 +843,8 @@ def render_campaign_tab(current_file, recipients_df):
             test_index = st.selectbox(
                 "Test recipient",
                 options=range(len(recipients_df)),
-                format_func=lambda idx: format_recipient_label(recipients_df.iloc[idx].to_dict()),
+                format_func=lambda idx: format_recipient_label(
+                    recipients_df.iloc[idx].to_dict()),
                 key="test_recipient",
             )
             if st.button("Send test SMS"):
@@ -845,15 +854,18 @@ def render_campaign_tab(current_file, recipients_df):
                         recipient = recipients_df.iloc[test_index]
                         result = sender.send_sms(
                             phone_number=recipient["contact_number"],
-                            message=personalize_message(message, recipient.get("name", "")),
+                            message=personalize_message(
+                                message, recipient.get("name", "")),
                             name=recipient.get("name", ""),
                             email=recipient.get("email", ""),
                         )
                     if result["status"] == "success":
                         st.success("Gateway accepted the test SMS request.")
-                        st.info("Delivery to the handset is not confirmed by this API response.")
+                        st.info(
+                            "Delivery to the handset is not confirmed by this API response.")
                         if result.get("operation_id"):
-                            st.caption(f"Operation ID: {result['operation_id']}")
+                            st.caption(
+                                f"Operation ID: {result['operation_id']}")
                     else:
                         st.error("Test SMS failed.")
                     st.json(result)
@@ -864,27 +876,91 @@ def render_campaign_tab(current_file, recipients_df):
             confirm = st.checkbox("I reviewed the message and recipient list.")
             if st.button("Start campaign", disabled=not (confirm and message.strip())):
                 try:
-                    with st.spinner("Sending campaign..."):
-                        sender = SMSSender()
-                        sender.rate_limit_delay = rate_limit
-                        if current_file == MEMORY_SOURCE:
-                            results = sender.send_bulk_sms_dataframe(
-                                recipients_df, message)
-                        else:
-                            results = sender.send_bulk_sms(
-                                str(resolve_csv_path(current_file)), message)
-                        report_path = sender.save_report()
-                    result_row = st.columns(3)
-                    with result_row[0]:
-                        st.metric("Total", results["total"])
-                    with result_row[1]:
-                        st.metric("Accepted by gateway", results["successful"])
-                    with result_row[2]:
-                        st.metric("Failed / skipped", results["failed"])
-                    st.success(f"Campaign requests completed. Report: {report_path}")
-                    st.info("Gateway acceptance does not guarantee handset delivery.")
+                    # Create reusable placeholder for live updates
+                    st.divider()
+                    st.subheader("📤 Sending Campaign...")
+
+                    # Single placeholder that updates in place
+                    progress_placeholder = st.empty()
+
+                    successful_count = 0
+                    failed_count = 0
+                    total_count = 0
+
+                    def progress_update(update_info):
+                        nonlocal successful_count, failed_count, total_count
+
+                        current = update_info.get("current", 0)
+                        total = update_info.get("total", 0)
+                        successful_count = update_info.get("successful", 0)
+                        failed_count = update_info.get("failed", 0)
+                        total_count = total
+                        status = update_info.get("status", "")
+                        recipient_info = update_info.get("recipient_info", "")
+
+                        # Update in place (not stacking)
+                        with progress_placeholder.container(border=True):
+                            # Progress bar
+                            progress = current / total if total > 0 else 0
+                            st.progress(
+                                progress, f"Progress: {current}/{total}")
+
+                            # Current recipient
+                            status_emoji = "✓" if status == "sent" else "⏳" if status == "processing" else "✗"
+                            percent = (current / total *
+                                       100) if total > 0 else 0
+                            st.markdown(
+                                f"{status_emoji} **{recipient_info}** | {percent:.1f}%"
+                            )
+
+                            # Live statistics
+                            stat_cols = st.columns(4, gap="small")
+                            with stat_cols[0]:
+                                st.metric("Processed", current, delta=None)
+                            with stat_cols[1]:
+                                st.metric(
+                                    "Sent ✓", successful_count, delta=None)
+                            with stat_cols[2]:
+                                st.metric("Failed ✗", failed_count, delta=None)
+                            with stat_cols[3]:
+                                remaining = total - current
+                                st.metric("Remaining", remaining, delta=None)
+
+                    # Create sender with progress callback
+                    sender = SMSSender(progress_callback=progress_update)
+                    sender.rate_limit_delay = rate_limit
+
+                    # Send campaign
+                    if current_file == MEMORY_SOURCE:
+                        results = sender.send_bulk_sms_dataframe(
+                            recipients_df, message)
+                    else:
+                        results = sender.send_bulk_sms(
+                            str(resolve_csv_path(current_file)), message)
+
+                    report_path = sender.save_report()
+
+                    # Final results display
+                    with progress_placeholder.container(border=True):
+                        st.divider()
+                        st.markdown("### ✅ Campaign Complete!")
+                        result_cols = st.columns(3, gap="large")
+                        with result_cols[0]:
+                            st.metric("Total", results["total"], delta=None)
+                        with result_cols[1]:
+                            st.metric("Accepted", results["successful"],
+                                      delta=f"{results['successful']} sent")
+                        with result_cols[2]:
+                            st.metric("Failed", results["failed"],
+                                      delta=f"{results['failed']} issues")
+
+                    st.success(
+                        f"✅ Campaign complete! Report saved to `{report_path}`")
+                    st.info(
+                        "💡 Gateway acceptance does not guarantee handset delivery. Check the report for details.")
+
                 except Exception as exc:
-                    st.error(f"Campaign failed: {exc}")
+                    st.error(f"❌ Campaign failed: {exc}")
 
 
 def render_reports_tab(reports):
