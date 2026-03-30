@@ -124,8 +124,10 @@ python -m streamlit run streamlit_app.py
 **3️⃣ Reports Tab**
 
 - **📋 View Reports**: Select from all campaign reports
-- **📈 Summary Metrics**: Total, successful, failed SMS count
-- **📝 Detailed Log**: Full details of each SMS sent
+- **📈 Summary Metrics**: Total, accepted, error, and skipped counts
+- **📝 Detailed Log**: Compact table for each SMS iteration
+- **📄 Full Message Drill-down**: Open the full stored message body for any row
+- **📤 CSV Export**: Download the current filtered report rows as CSV
 - **📥 Download**: Export report as JSON
 
 **4️⃣ Settings Tab**

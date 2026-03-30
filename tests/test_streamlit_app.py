@@ -125,6 +125,39 @@ def test_recipients_summary_and_build_message_stats():
     assert stats["has_placeholder"] is True
 
 
+def test_build_report_display_df_hides_full_message_body():
+    details_df = pd.DataFrame(
+        [
+            {
+                "iteration": 1,
+                "status": "success",
+                "contact_number": "94777123456",
+                "message_preview": "Hello...",
+                "message_body": "Hello full message body",
+                "operation_id": "123",
+            }
+        ]
+    )
+
+    display_df = streamlit_app.build_report_display_df(details_df)
+
+    assert "message_body" not in display_df.columns
+    assert display_df.iloc[0]["message_preview"] == "Hello..."
+
+
+def test_format_report_detail_label_prefers_name_and_iteration():
+    label = streamlit_app.format_report_detail_label(
+        {
+            "iteration": 3,
+            "name": "Alice",
+            "contact_number": "94777123456",
+            "status": "success",
+        }
+    )
+
+    assert label == "#3 Alice (94777123456) [success]"
+
+
 def test_ensure_session_state_initializes_draft_from_template(monkeypatch):
     streamlit_app.st.session_state.clear()
     monkeypatch.setattr(streamlit_app, "get_sms_message", lambda: "Template from file")

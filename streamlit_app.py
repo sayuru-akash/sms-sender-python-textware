@@ -461,6 +461,46 @@ def format_recipient_label(recipient):
     return f"{name} ({phone})" if name else phone
 
 
+def build_report_display_df(details_df):
+    """Return a compact report table without the full message body column."""
+    if details_df is None or details_df.empty:
+        return pd.DataFrame()
+
+    display_df = details_df.copy()
+    preferred_order = [
+        "iteration",
+        "timestamp",
+        "status",
+        "contact_number",
+        "name",
+        "email",
+        "message_preview",
+        "operation_id",
+        "status_code",
+        "gateway_status",
+        "delivery_status",
+        "error",
+        "reason",
+    ]
+    ordered_columns = [column for column in preferred_order if column in display_df.columns]
+    remaining_columns = [
+        column for column in display_df.columns
+        if column not in ordered_columns and column != "message_body"
+    ]
+    return display_df[ordered_columns + remaining_columns]
+
+
+def format_report_detail_label(row):
+    """Build a readable label for per-row report drill-down."""
+    iteration = row.get("iteration")
+    contact_number = row.get("contact_number") or row.get("phone") or "Unknown"
+    status = row.get("status", "unknown")
+    name = str(row.get("name", "")).strip()
+    identity = f"{name} ({contact_number})" if name else str(contact_number)
+    prefix = f"#{iteration} " if pd.notna(iteration) else ""
+    return f"{prefix}{identity} [{status}]"
+
+
 def show_status_chips(current_file, recipients_df, env_vars, report_count):
     """Render short status badges below the title."""
     missing_env = [key for key in REQUIRED_ENV_VARS if not env_vars.get(key)]
@@ -1030,7 +1070,40 @@ def render_reports_tab(reports):
             if status_filter != "All":
                 visible_df = details_df[details_df["status"].astype(
                     str) == status_filter]
-            st.dataframe(visible_df, width="stretch", hide_index=True)
+            display_df = build_report_display_df(visible_df)
+            st.dataframe(display_df, width="stretch", hide_index=True)
+
+            csv_filename = selected_report.name.replace(".json", f"_{status_filter.lower()}_rows.csv")
+            st.download_button(
+                "Download CSV",
+                data=visible_df.to_csv(index=False).encode("utf-8"),
+                file_name=csv_filename,
+                mime="text/csv",
+            )
+
+            with st.expander("View full message for a row", expanded=False):
+                row_options = list(range(len(visible_df)))
+                selected_index = st.selectbox(
+                    "Recipient row",
+                    row_options,
+                    format_func=lambda idx: format_report_detail_label(visible_df.iloc[idx].to_dict()),
+                    key="report_detail_row",
+                )
+                selected_row = visible_df.iloc[selected_index].fillna("").to_dict()
+                message_body = selected_row.get("message_body", "")
+                st.text_area(
+                    "Full message body",
+                    value=message_body,
+                    height=220,
+                    disabled=True,
+                    key="report_message_body_view",
+                )
+                detail_fields = {
+                    key: value
+                    for key, value in selected_row.items()
+                    if key != "message_body"
+                }
+                st.json(detail_fields)
 
         st.download_button(
             "Download JSON",
