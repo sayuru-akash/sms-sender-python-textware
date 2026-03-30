@@ -16,6 +16,7 @@ APP_DIR = Path(__file__).resolve().parent
 DEFAULT_INPUT_DIR = APP_DIR / "resources" / "input"
 DEFAULT_OUTPUT_DIR = APP_DIR / "resources" / "output"
 OUTPUT_COLUMNS = ["contact_number", "name", "email"]
+TRUTHY_VALUES = {"1", "true", "yes", "y", "paid", "registered"}
 
 FIELD_ALIASES = {
     "contact_number": {
@@ -49,6 +50,18 @@ FIELD_ALIASES = {
         "email_address",
         "mail",
     },
+    "payment_details": {
+        "payment",
+        "payment detail",
+        "payment details",
+        "payment_details",
+    },
+    "registered": {
+        "registered",
+        "registration",
+        "is registered",
+        "is_registered",
+    },
 }
 
 
@@ -76,6 +89,13 @@ def is_cleaned_input_file(input_path: Path) -> bool:
     return input_path.stem.endswith("_cleaned")
 
 
+def is_truthy_cell(value) -> bool:
+    """Return True for spreadsheet values that should count as an enabled boolean."""
+    if value is None:
+        return False
+    return str(value).strip().lower() in TRUTHY_VALUES
+
+
 def clean_recipient_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Clean raw recipient data into the system-ready output schema."""
     source_df = df.fillna("")
@@ -85,18 +105,31 @@ def clean_recipient_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
     name_column = find_matching_column(source_df.columns, "name")
     email_column = find_matching_column(source_df.columns, "email")
+    payment_column = find_matching_column(source_df.columns, "payment_details")
+    registered_column = find_matching_column(source_df.columns, "registered")
 
     cleaned_rows = []
     seen_numbers = set()
     stats = {
         "input_rows": len(source_df),
         "output_rows": 0,
+        "removed_paid_or_registered": 0,
         "removed_missing_or_invalid_phone": 0,
         "removed_duplicate_phone": 0,
         "blanked_invalid_email": 0,
     }
 
     for _, row in source_df.iterrows():
+        if (
+            payment_column
+            and is_truthy_cell(row.get(payment_column, ""))
+        ) or (
+            registered_column
+            and is_truthy_cell(row.get(registered_column, ""))
+        ):
+            stats["removed_paid_or_registered"] += 1
+            continue
+
         raw_phone = str(row.get(phone_column, "")).strip()
         normalized_phone = normalize_sl_phone_number(raw_phone)
 

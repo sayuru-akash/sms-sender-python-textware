@@ -252,6 +252,7 @@ What the cleaner does:
 
 - keeps only `contact_number`, `name`, and `email`
 - requires a valid Sri Lankan mobile number
+- drops any row where `Payment Details` or `Registered` is truthy
 - removes rows with missing or invalid numbers
 - removes duplicate numbers and keeps the first valid occurrence
 - blanks invalid email values instead of dropping otherwise-valid rows

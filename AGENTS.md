@@ -31,6 +31,7 @@ Main surfaces:
   - uploaded recipients can be used in memory without forcing a write to `recipients.csv`
   - raw CSVs in `resources/input` can be cleaned into `resources/output` without mutating the original file
   - cleaned outputs should keep only `contact_number`, `name`, and `email`
+  - rows marked truthy in `Payment Details` or `Registered` should be excluded from cleaned outputs
   - rows without a valid Sri Lankan mobile number are removed during cleaning
   - already-cleaned inputs or already-generated outputs should be skipped unless the user explicitly forces regeneration
   - reports and logs are intentionally written to disk

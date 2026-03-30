@@ -8,8 +8,32 @@ import clean_recipient_batches as cleaner
 def test_clean_recipient_dataframe_keeps_only_system_columns_and_cleans_rows():
     raw_df = pd.DataFrame(
         [
-            {"Phone Number": "0777123456", "Name": "Alice Silva Perera", "Email": "ALICE@example.com"},
-            {"Phone Number": "777123457", "Name": "", "Email": "bad-email"},
+            {
+                "Phone Number": "0777123456",
+                "Name": "Alice Silva Perera",
+                "Email": "ALICE@example.com",
+                "Payment Details": "FALSE",
+                "Registered": "FALSE",
+            },
+            {
+                "Phone Number": "777123457",
+                "Name": "",
+                "Email": "bad-email",
+                "Payment Details": "FALSE",
+                "Registered": "FALSE",
+            },
+            {
+                "Phone Number": "777123458",
+                "Name": "Already Paid",
+                "Payment Details": "TRUE",
+                "Registered": "FALSE",
+            },
+            {
+                "Phone Number": "777123459",
+                "Name": "Already Registered",
+                "Payment Details": "FALSE",
+                "Registered": "TRUE",
+            },
             {"Phone Number": "12345", "Name": "Invalid"},
             {"Phone Number": "0777123456", "Name": "Duplicate"},
         ]
@@ -30,8 +54,9 @@ def test_clean_recipient_dataframe_keeps_only_system_columns_and_cleans_rows():
             "email": "",
         },
     ]
-    assert stats["input_rows"] == 4
+    assert stats["input_rows"] == 6
     assert stats["output_rows"] == 2
+    assert stats["removed_paid_or_registered"] == 2
     assert stats["removed_missing_or_invalid_phone"] == 1
     assert stats["removed_duplicate_phone"] == 1
     assert stats["blanked_invalid_email"] == 1

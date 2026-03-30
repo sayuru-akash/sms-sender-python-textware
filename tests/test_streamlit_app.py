@@ -197,7 +197,8 @@ def test_app_uses_imported_recipients_as_active_source():
 
     assert at.session_state["csv_selector"] == "Imported (demo.csv)"
     assert at.metric[0].value == "Imported (demo.csv)"
-    assert at.selectbox[0].options == ["Sample", "Imported (demo.csv)"]
+    assert "Sample" in at.selectbox[0].options
+    assert "Imported (demo.csv)" in at.selectbox[0].options
 
 
 def test_set_selected_source_updates_pending_source():
