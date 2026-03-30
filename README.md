@@ -483,8 +483,8 @@ The suite covers:
 
 Current local verification:
 
-- `103` tests passing
-- `81%` total coverage from `python -m pytest --cov=. --cov-report=term-missing`
+- `110` tests passing
+- `93%` total coverage from `python -m pytest --cov=. --cov-report=term-missing`
 
 ### Quick Test: Web Dashboard
 

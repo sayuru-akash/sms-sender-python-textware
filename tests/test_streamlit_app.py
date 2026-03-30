@@ -1,9 +1,222 @@
+import io
+import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from streamlit.testing.v1 import AppTest
 
 import streamlit_app
+
+
+class SessionState(dict):
+    def __getattr__(self, item):
+        try:
+            return self[item]
+        except KeyError as exc:
+            raise AttributeError(item) from exc
+
+    def __setattr__(self, key, value):
+        self[key] = value
+
+
+class FakeContext:
+    def __init__(self, owner):
+        self.owner = owner
+
+    def __enter__(self):
+        return self.owner
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class FakePlaceholder(FakeContext):
+    def container(self, border=False):
+        return FakeContext(self.owner)
+
+
+class FakeRerun(RuntimeError):
+    pass
+
+
+class FakeStreamlit:
+    def __init__(
+        self,
+        *,
+        selectbox_values=None,
+        text_input_values=None,
+        text_area_values=None,
+        slider_values=None,
+        checkbox_values=None,
+        button_values=None,
+        form_submit_values=None,
+        uploaded_files=None,
+        session_state=None,
+    ):
+        self.session_state = SessionState()
+        if session_state:
+            self.session_state.update(session_state)
+        self.selectbox_values = selectbox_values or {}
+        self.text_input_values = text_input_values or {}
+        self.text_area_values = text_area_values or {}
+        self.slider_values = slider_values or {}
+        self.checkbox_values = checkbox_values or {}
+        self.button_values = button_values or {}
+        self.form_submit_values = form_submit_values or {}
+        self.uploaded_files = uploaded_files or {}
+        self.sidebar = FakeContext(self)
+
+        self.markdowns = []
+        self.captions = []
+        self.metrics = []
+        self.errors = []
+        self.warnings = []
+        self.infos = []
+        self.successes = []
+        self.json_payloads = []
+        self.dataframes = []
+        self.downloads = []
+        self.codes = []
+        self.progress_updates = []
+
+    def _lookup(self, mapping, label, key, default):
+        if key is not None and key in mapping:
+            return mapping[key]
+        if label in mapping:
+            return mapping[label]
+        return default
+
+    def markdown(self, body, unsafe_allow_html=False):
+        self.markdowns.append(body)
+
+    def title(self, body):
+        self.markdowns.append(body)
+
+    def subheader(self, body):
+        self.markdowns.append(body)
+
+    def caption(self, body):
+        self.captions.append(body)
+
+    def info(self, body):
+        self.infos.append(body)
+
+    def warning(self, body):
+        self.warnings.append(body)
+
+    def error(self, body):
+        self.errors.append(body)
+
+    def success(self, body):
+        self.successes.append(body)
+
+    def json(self, payload):
+        self.json_payloads.append(payload)
+
+    def dataframe(self, df, **kwargs):
+        self.dataframes.append(df.copy() if hasattr(df, "copy") else df)
+
+    def download_button(self, label, data=None, file_name=None, mime=None, **kwargs):
+        self.downloads.append(
+            {"label": label, "data": data, "file_name": file_name, "mime": mime}
+        )
+        return False
+
+    def metric(self, label, value, delta=None):
+        self.metrics.append((label, value, delta))
+
+    def divider(self):
+        return None
+
+    def columns(self, spec, gap=None):
+        count = spec if isinstance(spec, int) else len(spec)
+        return [FakeContext(self) for _ in range(count)]
+
+    def container(self, border=False):
+        return FakeContext(self)
+
+    def form(self, key, clear_on_submit=False):
+        return FakeContext(self)
+
+    def expander(self, label, expanded=False):
+        return FakeContext(self)
+
+    def spinner(self, text):
+        return FakeContext(self)
+
+    def tabs(self, labels):
+        return [FakeContext(self) for _ in labels]
+
+    def empty(self):
+        return FakePlaceholder(self)
+
+    def text_input(self, label, value="", key=None, **kwargs):
+        selected = self._lookup(self.text_input_values, label, key, value)
+        if key is not None:
+            self.session_state[key] = selected
+        return selected
+
+    def text_area(self, label, value="", key=None, **kwargs):
+        selected = self._lookup(self.text_area_values, label, key, value)
+        if key is not None:
+            self.session_state[key] = selected
+        return selected
+
+    def selectbox(self, label, options, index=0, key=None, format_func=None, **kwargs):
+        option_list = list(options)
+        default = option_list[index] if option_list else None
+        selected = self._lookup(self.selectbox_values, label, key, default)
+        if key is not None:
+            self.session_state[key] = selected
+        return selected
+
+    def slider(self, label, min_value, max_value, value=None, key=None, **kwargs):
+        default = value
+        if default is None and key is not None and key in self.session_state:
+            default = self.session_state[key]
+        if default is None:
+            default = min_value
+        selected = self._lookup(self.slider_values, label, key, default)
+        if key is not None:
+            self.session_state[key] = selected
+        return selected
+
+    def checkbox(self, label, value=False, key=None, **kwargs):
+        selected = self._lookup(self.checkbox_values, label, key, value)
+        if key is not None:
+            self.session_state[key] = selected
+        return selected
+
+    def button(self, label, key=None, on_click=None, disabled=False, **kwargs):
+        selected = self._lookup(self.button_values, label, key, False)
+        pressed = bool(selected) and not disabled
+        if pressed and on_click:
+            on_click()
+        return pressed
+
+    def form_submit_button(self, label, **kwargs):
+        return bool(self.form_submit_values.get(label, False))
+
+    def file_uploader(self, label, **kwargs):
+        return self.uploaded_files.get(label)
+
+    def code(self, body, language=None):
+        self.codes.append(body)
+
+    def progress(self, value, text=None):
+        self.progress_updates.append((value, text))
+
+    def rerun(self):
+        raise FakeRerun()
+
+    def segmented_control(self, label, options, default=None, key=None, **kwargs):
+        selected = self._lookup(
+            self.selectbox_values, label, key, default if default is not None else options[0]
+        )
+        if key is not None:
+            self.session_state[key] = selected
+        return selected
 
 
 def test_load_recipients_preserves_string_columns(tmp_path, monkeypatch):
@@ -227,3 +440,254 @@ def test_app_reports_missing_columns_for_selected_file(tmp_path, monkeypatch):
     at.run()
 
     assert any("Missing column(s)" in error.value for error in at.error)
+
+
+def test_render_dashboard_and_settings_cover_summary_views(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "app.log").write_text("ok", encoding="utf-8")
+    fake_st = FakeStreamlit(session_state={"draft_message": "Hello"})
+    monkeypatch.setattr(streamlit_app, "st", fake_st)
+
+    recipients_df = pd.DataFrame(
+        [{"name": "Alice", "email": "alice@example.com", "contact_number": "94777123456"}]
+    )
+    env_vars = {
+        "SMS_USERNAME": "user",
+        "SMS_PASSWORD": "secret",
+        "SMS_SOURCE": "SRC",
+        "SMS_API_URL": "https://example.com",
+    }
+    reports = [tmp_path / "reports" / "report.json"]
+
+    streamlit_app.apply_theme()
+    streamlit_app.show_status_chips("Sample", recipients_df, env_vars, 1)
+    streamlit_app.render_header("Sample", recipients_df, env_vars, reports)
+    streamlit_app.render_dashboard_tab("Sample", recipients_df, env_vars, reports)
+    streamlit_app.render_settings_tab("Sample", env_vars, reports)
+
+    assert any(label == "Active list" for label, _, _ in fake_st.metrics)
+    assert any(label == "Environment" for label, _, _ in fake_st.metrics)
+    assert any("Latest report" in caption for caption in fake_st.captions)
+
+
+def test_render_reports_tab_shows_filtered_downloadable_details(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    report_path = reports_dir / "sms_report_demo.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "total_sms": 2,
+                "accepted_by_gateway": 1,
+                "errors": 1,
+                "skipped": 0,
+                "started_at": "2026-03-30T12:00:00",
+                "finished_at": "2026-03-30T12:05:00",
+                "duration_seconds": 300,
+                "context": {"channel": "streamlit", "source_label": "Sample"},
+                "details": [
+                    {
+                        "iteration": 1,
+                        "status": "success",
+                        "contact_number": "94777123456",
+                        "name": "Alice",
+                        "email": "alice@example.com",
+                        "message_body": "Hello Alice",
+                        "message_preview": "Hello Alice",
+                        "operation_id": "op-1",
+                    },
+                    {
+                        "iteration": 2,
+                        "status": "error",
+                        "contact_number": "94777123457",
+                        "name": "Bob",
+                        "message_preview": "Hello Bob",
+                        "error": "Gateway error",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_st = FakeStreamlit(selectbox_values={"Status": "success"})
+    monkeypatch.setattr(streamlit_app, "st", fake_st)
+
+    streamlit_app.render_reports_tab([report_path])
+
+    assert any(label == "Accepted by gateway" for label, _, _ in fake_st.metrics)
+    assert any(download["label"] == "Download CSV" for download in fake_st.downloads)
+    assert any(download["label"] == "Download JSON" for download in fake_st.downloads)
+    assert any(payload.get("channel") == "streamlit" for payload in fake_st.json_payloads)
+    assert fake_st.codes == ["Hello Alice"]
+
+
+def test_render_recipients_tab_saves_manual_recipient_to_uploaded_csv(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    fake_st = FakeStreamlit(
+        text_input_values={
+            "Search": "",
+            "Name": "Alice Silva Perera",
+            "Email": "ALICE@example.com",
+            "Phone": "0777123456",
+        },
+        form_submit_values={"Save": True},
+    )
+    monkeypatch.setattr(streamlit_app, "st", fake_st)
+
+    with pytest.raises(FakeRerun):
+        streamlit_app.render_recipients_tab(
+            streamlit_app.DEFAULT_UPLOAD_CSV,
+            "Uploaded",
+            pd.DataFrame(columns=streamlit_app.RECIPIENT_COLUMNS),
+        )
+
+    saved_df = pd.read_csv(tmp_path / streamlit_app.DEFAULT_UPLOAD_CSV, dtype=str).fillna("")
+    assert saved_df.to_dict(orient="records") == [
+        {
+            "name": "Alice Silva",
+            "email": "alice@example.com",
+            "contact_number": "94777123456",
+        }
+    ]
+    assert fake_st.session_state["selected_source"] == streamlit_app.DEFAULT_UPLOAD_CSV
+
+
+def test_render_recipients_tab_adds_manual_recipient_to_memory_list(monkeypatch):
+    imported_df = pd.DataFrame(
+        [{"name": "Existing", "email": "", "contact_number": "94777123456"}]
+    )
+    fake_st = FakeStreamlit(
+        text_input_values={
+            "Search": "",
+            "Name": "New User",
+            "Email": "",
+            "Phone": "0777123457",
+        },
+        form_submit_values={"Save": True},
+        session_state={"imported_recipients": imported_df.copy()},
+    )
+    monkeypatch.setattr(streamlit_app, "st", fake_st)
+
+    with pytest.raises(FakeRerun):
+        streamlit_app.render_recipients_tab(
+            streamlit_app.MEMORY_SOURCE,
+            "Imported (demo.csv)",
+            imported_df,
+        )
+
+    updated_df = fake_st.session_state["imported_recipients"]
+    assert len(updated_df) == 2
+    assert updated_df.iloc[1]["contact_number"] == "94777123457"
+    assert fake_st.session_state["selected_source"] == streamlit_app.MEMORY_SOURCE
+
+
+def test_render_recipients_tab_uses_uploaded_csv_without_saving(monkeypatch):
+    uploaded_csv = io.StringIO(
+        "name,email,contact_number\nAlice,alice@example.com,0777123456\nBob,,0777123457\n"
+    )
+    uploaded_csv.name = "demo.csv"
+    fake_st = FakeStreamlit(
+        text_input_values={"Search": ""},
+        uploaded_files={"Choose CSV": uploaded_csv},
+        button_values={"Use now": True},
+    )
+    monkeypatch.setattr(streamlit_app, "st", fake_st)
+
+    with pytest.raises(FakeRerun):
+        streamlit_app.render_recipients_tab(
+            streamlit_app.DEFAULT_SAMPLE_CSV,
+            "Sample",
+            pd.DataFrame(columns=streamlit_app.RECIPIENT_COLUMNS),
+        )
+
+    imported_df = fake_st.session_state["imported_recipients"]
+    assert len(imported_df) == 2
+    assert fake_st.session_state["imported_label"] == "Imported (demo.csv)"
+    assert fake_st.session_state["selected_source"] == streamlit_app.MEMORY_SOURCE
+
+
+def test_render_campaign_tab_sends_test_sms(monkeypatch):
+    recipients_df = pd.DataFrame(
+        [{"name": "Alice", "email": "alice@example.com", "contact_number": "94777123456"}]
+    )
+    fake_st = FakeStreamlit(
+        text_area_values={"draft_message": "Hello {name}"},
+        button_values={"Send test SMS": True},
+        session_state={"draft_message": "Hello {name}", "campaign_rate_limit": 2},
+    )
+    monkeypatch.setattr(streamlit_app, "st", fake_st)
+
+    class FakeSender:
+        def __init__(self, progress_callback=None):
+            self.progress_callback = progress_callback
+
+        def send_sms(self, phone_number, message, name, email):
+            assert phone_number == "94777123456"
+            assert message == "Hello Alice"
+            return {"status": "success", "operation_id": "op-123"}
+
+    monkeypatch.setattr(streamlit_app, "SMSSender", FakeSender)
+
+    streamlit_app.render_campaign_tab("Sample", "Sample", recipients_df)
+
+    assert "Gateway accepted the test SMS request." in fake_st.successes
+    assert any("Delivery to the handset" in message for message in fake_st.infos)
+    assert fake_st.json_payloads[0]["operation_id"] == "op-123"
+
+
+def test_render_campaign_tab_starts_bulk_campaign_for_memory_source(monkeypatch):
+    recipients_df = pd.DataFrame(
+        [
+            {"name": "Alice", "email": "alice@example.com", "contact_number": "94777123456"},
+            {"name": "Bob", "email": "", "contact_number": "94777123457"},
+        ]
+    )
+    fake_st = FakeStreamlit(
+        text_area_values={"draft_message": "Hello {name}"},
+        checkbox_values={"I reviewed the message and recipient list.": True},
+        button_values={"Start campaign": True},
+        session_state={"draft_message": "Hello {name}", "campaign_rate_limit": 3},
+    )
+    monkeypatch.setattr(streamlit_app, "st", fake_st)
+
+    class FakeSender:
+        last_instance = None
+
+        def __init__(self, progress_callback=None):
+            self.progress_callback = progress_callback
+            self.rate_limit_delay = None
+            self.context = None
+            FakeSender.last_instance = self
+
+        def set_report_context(self, **kwargs):
+            self.context = kwargs
+
+        def send_bulk_sms_dataframe(self, df, message):
+            self.progress_callback(
+                {
+                    "current": 2,
+                    "total": 2,
+                    "successful": 2,
+                    "failed": 0,
+                    "errors": 0,
+                    "skipped": 0,
+                    "status": "sent",
+                    "recipient_info": "Bob (94777123457)",
+                }
+            )
+            return {"total": 2, "successful": 2, "errors": 0, "skipped": 0}
+
+        def save_report(self):
+            return "reports/sms_report_demo.json"
+
+    monkeypatch.setattr(streamlit_app, "SMSSender", FakeSender)
+
+    streamlit_app.render_campaign_tab(streamlit_app.MEMORY_SOURCE, "Imported", recipients_df)
+
+    assert any("Campaign complete" in message for message in fake_st.successes)
+    assert any("Gateway acceptance does not guarantee handset delivery" in msg for msg in fake_st.infos)
+    assert any(label == "Total" and value == 2 for label, value, _ in fake_st.metrics)
+    assert FakeSender.last_instance.context["source_type"] == "memory"
+    assert FakeSender.last_instance.rate_limit_delay == 3
