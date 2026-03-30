@@ -365,15 +365,20 @@ timeout = 30  # Request timeout in seconds
 
 **Contains:**
 
-- Timestamp of campaign
-- Total SMS count
-- Gateway acceptance/failure breakdown
+- Report version and generated timestamp
+- Campaign start and finish timestamps
+- Total recipient rows processed
+- Gateway acceptance, error, and skipped breakdown
+- Run context such as channel, source, and message template
 - Individual SMS results:
-  - Status (success/error)
-  - Phone number
+  - Iteration number
+  - Status (`success`, `error`, or `skipped`)
+  - Phone number / contact number
   - Recipient name & email
+  - Full message body
+  - Message preview
   - API response
-  - Operation ID when the gateway returns one
+  - Operation ID when available
   - Error details (if failed)
 
 Note: a successful send in this app means the SMS gateway accepted the request. It does not by itself confirm handset delivery.

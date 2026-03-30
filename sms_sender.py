@@ -210,6 +210,8 @@ class SMSSender:
 
         # Report data
         self.report_data = []
+        self.report_started_at = datetime.now()
+        self.report_context = {}
 
     def _validate_credentials(self) -> None:
         """Validate that all required environment variables are set"""
@@ -223,6 +225,51 @@ class SMSSender:
             raise ValueError(error_msg)
 
         logger.info("✓ All SMS credentials validated successfully")
+
+    def set_report_context(self, **context) -> None:
+        """Merge run-level metadata that should be written to the report."""
+        self.report_context.update({key: value for key, value in context.items() if value is not None})
+
+    def _build_report_entry(
+        self,
+        *,
+        result: Dict,
+        contact_number: str,
+        name: str = "",
+        email: str = "",
+        message_body: str = "",
+        iteration: Optional[int] = None,
+        raw_contact_number: str = "",
+        reason: str = "",
+    ) -> Dict:
+        """Create a canonical per-recipient report row."""
+        entry = {
+            "iteration": iteration,
+            "timestamp": result.get("timestamp", datetime.now().isoformat()),
+            "status": result.get("status", "error"),
+            "contact_number": contact_number,
+            "phone": contact_number,
+            "raw_contact_number": raw_contact_number or contact_number,
+            "name": name,
+            "email": email,
+            "message_body": message_body,
+            "message_preview": message_body[:50] + "..." if len(message_body) > 50 else message_body,
+            "response": result.get("response"),
+            "status_code": result.get("status_code"),
+            "operation_id": result.get("operation_id"),
+            "api_format": result.get("api_format"),
+            "method": result.get("method"),
+            "gateway_status": result.get("gateway_status"),
+            "delivery_status": result.get("delivery_status"),
+            "delivery_confirmed": result.get("delivery_confirmed"),
+            "delivery_status_note": result.get("delivery_status_note"),
+            "error": result.get("error"),
+            "reason": reason or result.get("reason"),
+        }
+        for key, value in result.items():
+            if key not in entry:
+                entry[key] = value
+        return entry
 
     def _create_session(self) -> requests.Session:
         """Create a requests session with retry strategy"""
@@ -423,6 +470,14 @@ class SMSSender:
     def test_api_connection(self, recipients_file: str = "recipients.csv") -> Dict:
         """Test API connection using first recipient from CSV"""
         logger.info("🧪 Testing SMS API Connection...")
+        self.set_report_context(
+            channel="cli",
+            mode="test",
+            source_type="csv",
+            source_id=recipients_file,
+            source_label=recipients_file,
+            message_template="Test SMS - API Connectivity Check",
+        )
 
         # Load first recipient from CSV for testing
         if not Path(recipients_file).exists():
@@ -466,13 +521,18 @@ class SMSSender:
 
                 # Try POST first
                 result = self._send_sms_request(test_phone, test_message)
-                result["name"] = test_name
-                result["email"] = test_email
-                result["message_preview"] = test_message
+                result = self._build_report_entry(
+                    result=result,
+                    contact_number=test_phone,
+                    raw_contact_number=test_phone,
+                    name=test_name,
+                    email=test_email,
+                    message_body=test_message,
+                    iteration=1,
+                )
 
                 if result.get("status") == "success":
                     logger.info("✓ API request accepted by gateway (POST)")
-                    # Add to report
                     self.report_data.append(result)
                     return result
 
@@ -482,11 +542,16 @@ class SMSSender:
                     test_phone, test_message)
 
                 if get_result:
-                    get_result["name"] = test_name
-                    get_result["email"] = test_email
-                    get_result["message_preview"] = test_message
+                    get_result = self._build_report_entry(
+                        result=get_result,
+                        contact_number=test_phone,
+                        raw_contact_number=test_phone,
+                        name=test_name,
+                        email=test_email,
+                        message_body=test_message,
+                        iteration=1,
+                    )
                     logger.info("✓ API request accepted by gateway (GET)")
-                    # Add to report
                     self.report_data.append(get_result)
                     return get_result
 
@@ -500,12 +565,19 @@ class SMSSender:
                     "timestamp": datetime.now().isoformat(),
                     "name": test_name,
                     "email": test_email,
-                    "message_preview": test_message,
                     "phone": test_phone
                 }
-                # Add to report
-                self.report_data.append(error_result)
-                return error_result
+                report_entry = self._build_report_entry(
+                    result=error_result,
+                    contact_number=test_phone,
+                    raw_contact_number=test_phone,
+                    name=test_name,
+                    email=test_email,
+                    message_body=test_message,
+                    iteration=1,
+                )
+                self.report_data.append(report_entry)
+                return report_entry
 
         except Exception as e:
             error_msg = f"Error reading test CSV: {str(e)}"
@@ -521,25 +593,31 @@ class SMSSender:
 
         cleaned = sanitize_recipient(name, email, phone_number)
         if not cleaned["is_valid"]:
-            result = {
+            result = self._build_report_entry(
+                result={
                 "status": "error",
                 "error": "; ".join(cleaned["errors"]),
                 "phone": phone_number,
-                "name": cleaned["name"],
-                "email": cleaned["email"],
                 "timestamp": datetime.now().isoformat(),
-                "message_preview": message[:50] + "..." if len(message) > 50 else message,
-            }
+                },
+                contact_number=cleaned["contact_number"] or str(phone_number).strip(),
+                raw_contact_number=str(phone_number).strip(),
+                name=cleaned["name"],
+                email=cleaned["email"],
+                message_body=message,
+            )
             self.report_data.append(result)
             return result
 
-        result = self._send_sms_request(cleaned["contact_number"], message)
-
-        # Add additional info to report
-        result["name"] = cleaned["name"]
-        result["email"] = cleaned["email"]
-        result["message_preview"] = message[:50] + \
-            "..." if len(message) > 50 else message
+        api_result = self._send_sms_request(cleaned["contact_number"], message)
+        result = self._build_report_entry(
+            result=api_result,
+            contact_number=cleaned["contact_number"],
+            raw_contact_number=str(phone_number).strip(),
+            name=cleaned["name"],
+            email=cleaned["email"],
+            message_body=message,
+        )
 
         self.report_data.append(result)
 
@@ -550,6 +628,13 @@ class SMSSender:
 
     def send_bulk_sms(self, recipients_file: str, message: str) -> Dict:
         """Send SMS to multiple recipients from CSV"""
+        self.set_report_context(
+            mode="bulk",
+            source_type="csv",
+            source_id=recipients_file,
+            source_label=recipients_file,
+            message_template=message,
+        )
 
         if not Path(recipients_file).exists():
             error_msg = f"Recipients file not found: {recipients_file}"
@@ -559,7 +644,7 @@ class SMSSender:
         try:
             with open(recipients_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
-                return self._send_bulk_rows(reader, message)
+                return self._send_bulk_rows(list(reader), message)
         except csv.Error as e:
             error_msg = f"Error reading CSV file: {str(e)}"
             logger.error(f"❌ {error_msg}")
@@ -575,15 +660,25 @@ class SMSSender:
             raise ValueError("Recipients dataframe is empty")
 
         records = recipients_df.fillna("").to_dict(orient="records")
+        self.set_report_context(
+            mode="bulk",
+            source_type="dataframe",
+            source_id="dataframe",
+            source_label="Imported recipients",
+            message_template=message,
+        )
         return self._send_bulk_rows(records, message)
 
     def _send_bulk_rows(self, rows, message: str) -> Dict:
         """Send SMS to multiple recipients from row dictionaries."""
+        total_rows = len(rows)
 
         results = {
-            "total": 0,
+            "total": total_rows,
             "successful": 0,
             "failed": 0,
+            "errors": 0,
+            "skipped": 0,
             "details": []
         }
 
@@ -592,16 +687,19 @@ class SMSSender:
             current_index = 0
 
             for row in rows:
-                results["total"] += 1
                 current_index += 1
 
                 # Notify progress callback
                 if self.progress_callback:
                     self.progress_callback({
                         "current": current_index,
-                        "total": results["total"],
+                        "total": total_rows,
                         "status": "processing",
-                        "recipient_info": f"{row.get('name', 'N/A')} ({row.get('contact_number', 'N/A')})"
+                        "recipient_info": f"{row.get('name', 'N/A')} ({row.get('contact_number', 'N/A')})",
+                        "successful": results["successful"],
+                        "failed": results["failed"],
+                        "errors": results["errors"],
+                        "skipped": results["skipped"],
                     })
 
                 cleaned = sanitize_recipient(
@@ -615,15 +713,22 @@ class SMSSender:
                         f"⚠ Skipping invalid recipient: {cleaned['name'] or 'Unknown'} ({'; '.join(cleaned['errors'])})")
                     skipped_result = {
                         "status": "skipped",
-                        "name": cleaned["name"],
-                        "email": cleaned["email"],
-                        "contact_number": str(row.get("contact_number", "")).strip(),
-                        "reason": "; ".join(cleaned["errors"]),
                         "timestamp": datetime.now().isoformat(),
                     }
+                    report_entry = self._build_report_entry(
+                        result=skipped_result,
+                        contact_number=cleaned["contact_number"] or str(row.get("contact_number", "")).strip(),
+                        raw_contact_number=str(row.get("contact_number", "")).strip(),
+                        name=cleaned["name"],
+                        email=cleaned["email"],
+                        message_body=personalize_message(message, cleaned["name"]),
+                        iteration=current_index,
+                        reason="; ".join(cleaned["errors"]),
+                    )
                     results["failed"] += 1
-                    results["details"].append(skipped_result)
-                    self.report_data.append(skipped_result)
+                    results["skipped"] += 1
+                    results["details"].append(report_entry)
+                    self.report_data.append(report_entry)
                     continue
 
                 name = cleaned["name"]
@@ -635,15 +740,22 @@ class SMSSender:
                         f"⚠ Skipping duplicate phone number: {contact_number} ({name})")
                     skipped_result = {
                         "status": "skipped",
-                        "name": name,
-                        "email": email,
-                        "contact_number": contact_number,
-                        "reason": "Duplicate contact number",
                         "timestamp": datetime.now().isoformat(),
                     }
+                    report_entry = self._build_report_entry(
+                        result=skipped_result,
+                        contact_number=contact_number,
+                        raw_contact_number=str(row.get("contact_number", "")).strip(),
+                        name=name,
+                        email=email,
+                        message_body=personalize_message(message, name),
+                        iteration=current_index,
+                        reason="Duplicate contact number",
+                    )
                     results["failed"] += 1
-                    results["details"].append(skipped_result)
-                    self.report_data.append(skipped_result)
+                    results["skipped"] += 1
+                    results["details"].append(report_entry)
+                    self.report_data.append(report_entry)
                     continue
 
                 seen_numbers.add(contact_number)
@@ -652,22 +764,26 @@ class SMSSender:
 
                 result = self.send_sms(
                     contact_number, personalized_message, name, email)
+                result["iteration"] = current_index
+                result["raw_contact_number"] = str(row.get("contact_number", "")).strip() or contact_number
 
                 if result["status"] == "success":
                     results["successful"] += 1
                 else:
                     results["failed"] += 1
+                    results["errors"] += 1
 
                 results["details"].append(result)
-                self.report_data.append(result)
 
                 # Notify progress callback after sending
                 if self.progress_callback:
                     self.progress_callback({
                         "current": current_index,
-                        "total": results["total"],
+                        "total": total_rows,
                         "successful": results["successful"],
                         "failed": results["failed"],
+                        "errors": results["errors"],
+                        "skipped": results["skipped"],
                         "status": "sent" if result["status"] == "success" else "failed",
                         "recipient_info": f"{name} ({contact_number})"
                     })
@@ -692,12 +808,26 @@ class SMSSender:
 
         report_filename = f"sms_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path = report_dir / report_filename
+        report_finished_at = datetime.now()
+        accepted_count = sum(1 for r in self.report_data if r.get("status") == "success")
+        skipped_count = sum(1 for r in self.report_data if r.get("status") == "skipped")
+        error_count = sum(
+            1 for r in self.report_data if r.get("status") not in {"success", "skipped"}
+        )
 
         report = {
-            "timestamp": datetime.now().isoformat(),
+            "report_version": 2,
+            "timestamp": report_finished_at.isoformat(),
+            "started_at": self.report_started_at.isoformat(),
+            "finished_at": report_finished_at.isoformat(),
+            "duration_seconds": round((report_finished_at - self.report_started_at).total_seconds(), 3),
+            "context": self.report_context,
             "total_sms": len(self.report_data),
-            "successful": sum(1 for r in self.report_data if r.get("status") == "success"),
-            "failed": sum(1 for r in self.report_data if r.get("status") != "success"),
+            "successful": accepted_count,
+            "failed": error_count + skipped_count,
+            "accepted_by_gateway": accepted_count,
+            "errors": error_count,
+            "skipped": skipped_count,
             "details": self.report_data
         }
 

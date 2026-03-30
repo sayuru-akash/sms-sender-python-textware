@@ -767,7 +767,7 @@ def render_recipients_tab(current_source, current_label, recipients_df):
                     st.rerun()
 
 
-def render_campaign_tab(current_file, recipients_df):
+def render_campaign_tab(current_file, current_label, recipients_df):
     """Campaign editor and send flow."""
     recipients_df = ensure_recipient_dataframe(recipients_df)
     if recipients_df.empty:
@@ -883,17 +883,21 @@ def render_campaign_tab(current_file, recipients_df):
                     # Single placeholder that updates in place
                     progress_placeholder = st.empty()
 
-                    successful_count = 0
+                    accepted_count = 0
                     failed_count = 0
+                    error_count = 0
+                    skipped_count = 0
                     total_count = 0
 
                     def progress_update(update_info):
-                        nonlocal successful_count, failed_count, total_count
+                        nonlocal accepted_count, failed_count, error_count, skipped_count, total_count
 
                         current = update_info.get("current", 0)
                         total = update_info.get("total", 0)
-                        successful_count = update_info.get("successful", 0)
+                        accepted_count = update_info.get("successful", 0)
                         failed_count = update_info.get("failed", 0)
+                        error_count = update_info.get("errors", 0)
+                        skipped_count = update_info.get("skipped", 0)
                         total_count = total
                         status = update_info.get("status", "")
                         recipient_info = update_info.get("recipient_info", "")
@@ -914,21 +918,33 @@ def render_campaign_tab(current_file, recipients_df):
                             )
 
                             # Live statistics
-                            stat_cols = st.columns(4, gap="small")
+                            stat_cols = st.columns(5, gap="small")
                             with stat_cols[0]:
                                 st.metric("Processed", current, delta=None)
                             with stat_cols[1]:
                                 st.metric(
-                                    "Sent ✓", successful_count, delta=None)
+                                    "Accepted ✓", accepted_count, delta=None)
                             with stat_cols[2]:
-                                st.metric("Failed ✗", failed_count, delta=None)
+                                st.metric("Errors ✗", error_count, delta=None)
                             with stat_cols[3]:
+                                st.metric("Skipped", skipped_count, delta=None)
+                            with stat_cols[4]:
                                 remaining = total - current
                                 st.metric("Remaining", remaining, delta=None)
 
                     # Create sender with progress callback
                     sender = SMSSender(progress_callback=progress_update)
                     sender.rate_limit_delay = rate_limit
+                    if hasattr(sender, "set_report_context"):
+                        sender.set_report_context(
+                            channel="streamlit",
+                            mode="bulk",
+                            source_type="memory" if current_file == MEMORY_SOURCE else "csv",
+                            source_id=current_file,
+                            source_label=current_label,
+                            message_template=message,
+                            rate_limit_delay=rate_limit,
+                        )
 
                     # Send campaign
                     if current_file == MEMORY_SOURCE:
@@ -944,15 +960,15 @@ def render_campaign_tab(current_file, recipients_df):
                     with progress_placeholder.container(border=True):
                         st.divider()
                         st.markdown("### ✅ Campaign Complete!")
-                        result_cols = st.columns(3, gap="large")
+                        result_cols = st.columns(4, gap="large")
                         with result_cols[0]:
                             st.metric("Total", results["total"], delta=None)
                         with result_cols[1]:
-                            st.metric("Accepted", results["successful"],
-                                      delta=f"{results['successful']} sent")
+                            st.metric("Accepted", results["successful"], delta=None)
                         with result_cols[2]:
-                            st.metric("Failed", results["failed"],
-                                      delta=f"{results['failed']} issues")
+                            st.metric("Errors", results["errors"], delta=None)
+                        with result_cols[3]:
+                            st.metric("Skipped", results["skipped"], delta=None)
 
                     st.success(
                         f"✅ Campaign complete! Report saved to `{report_path}`")
@@ -981,13 +997,27 @@ def render_reports_tab(reports):
             return
 
         details_df = pd.DataFrame(report_data.get("details", []))
-        top = st.columns(3)
+        top = st.columns(4)
         with top[0]:
             st.metric("Total", report_data.get("total_sms", len(details_df)))
         with top[1]:
-            st.metric("Accepted by gateway", report_data.get("successful", 0))
+            st.metric("Accepted by gateway", report_data.get("accepted_by_gateway", report_data.get("successful", 0)))
         with top[2]:
-            st.metric("Failed", report_data.get("failed", 0))
+            st.metric("Errors", report_data.get("errors", 0))
+        with top[3]:
+            st.metric("Skipped", report_data.get("skipped", 0))
+
+        context = report_data.get("context", {})
+        if context:
+            with st.expander("Run metadata", expanded=False):
+                st.json(
+                    {
+                        "started_at": report_data.get("started_at"),
+                        "finished_at": report_data.get("finished_at"),
+                        "duration_seconds": report_data.get("duration_seconds"),
+                        **context,
+                    }
+                )
 
         if details_df.empty:
             st.info("No row-level details.")
@@ -1089,7 +1119,7 @@ def main():
     elif section == "Recipients":
         render_recipients_tab(current_file, current_label, recipients_df)
     elif section == "Campaign":
-        render_campaign_tab(current_file, recipients_df)
+        render_campaign_tab(current_file, current_label, recipients_df)
     elif section == "Reports":
         render_reports_tab(reports)
     elif section == "Settings":

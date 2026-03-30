@@ -71,6 +71,15 @@ def run_bulk_campaign():
     try:
         sender = SMSSender()
         message_template = get_sms_message()
+        if hasattr(sender, "set_report_context"):
+            sender.set_report_context(
+                channel="cli",
+                mode="bulk",
+                source_type="csv",
+                source_id="recipients.csv",
+                source_label="recipients.csv",
+                message_template=message_template,
+            )
         
         recipients_file = "recipients.csv"
         if not Path(recipients_file).exists():
@@ -84,6 +93,9 @@ def run_bulk_campaign():
         report_path = sender.save_report()
         
         print(f"\n✓ Campaign requests completed!")
+        print(f"Accepted by gateway: {results['successful']}")
+        print(f"Errors: {results.get('errors', 0)}")
+        print(f"Skipped: {results.get('skipped', 0)}")
         print("ℹ Gateway acceptance does not guarantee handset delivery.")
         print(f"Report saved: {report_path}")
         

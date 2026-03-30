@@ -195,6 +195,7 @@ def test_send_sms_success_appends_report_and_respects_sleep(sms_env, monkeypatch
 
     assert result["status"] == "success"
     assert result["name"] == "Test User"
+    assert result["message_body"] == "hello"
     assert sender.report_data[-1]["status"] == "success"
     assert sleep_calls == [2]
 
@@ -223,6 +224,7 @@ def test_send_bulk_sms_dataframe_handles_invalid_and_duplicate_rows(sms_env, no_
     assert result["successful"] == 1
     assert result["failed"] == 2
     assert [item["status"] for item in result["details"]] == ["success", "skipped", "skipped"]
+    assert len(sender.report_data) == 3
 
 
 def test_send_bulk_sms_dataframe_allows_contact_number_only_rows(sms_env, no_sleep):
@@ -319,10 +321,11 @@ def test_save_report_writes_json_with_failed_count_for_non_success(
     sms_env, isolated_report_dir
 ):
     sender = SMSSender()
+    sender.set_report_context(channel="test", mode="bulk", message_template="Hello {name}")
     sender.report_data = [
-        {"status": "success", "name": "Alice"},
-        {"status": "error", "name": "Bob"},
-        {"status": "skipped", "name": "Carol"},
+        {"status": "success", "name": "Alice", "message_body": "Hello Alice"},
+        {"status": "error", "name": "Bob", "message_body": "Hello Bob"},
+        {"status": "skipped", "name": "Carol", "message_body": "Hello Carol"},
     ]
 
     report_path = sender.save_report()
@@ -331,6 +334,11 @@ def test_save_report_writes_json_with_failed_count_for_non_success(
     assert payload["total_sms"] == 3
     assert payload["successful"] == 1
     assert payload["failed"] == 2
+    assert payload["accepted_by_gateway"] == 1
+    assert payload["errors"] == 1
+    assert payload["skipped"] == 1
+    assert payload["context"]["channel"] == "test"
+    assert payload["details"][0]["message_body"] == "Hello Alice"
 
 
 def test_send_sms_request_timeout_on_all_formats_returns_timeout_error(sms_env):
