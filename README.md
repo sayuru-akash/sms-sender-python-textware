@@ -35,6 +35,7 @@ Sends personalized SMS messages to recipients from CSV files using the Text-Ware
 
 - ✅ Flexible CSV selection (sample or uploaded)
 - ✅ Unsaved imported recipient lists can be used immediately
+- ✅ Batch cleaner for raw recipient exports in `resources/input/`
 - ✅ Single & bulk SMS sending
 - ✅ Automatic name personalization {name}
 - ✅ Smart name handling - limits to first 2 words
@@ -60,12 +61,15 @@ sms-sender-python-textware/
 ├── main.py                CLI entry point
 ├── streamlit_app.py       Web dashboard (recommended)
 ├── quickstart.py          Menu system
+├── clean_recipient_batches.py  Batch CSV cleaner for raw recipient exports
 ├── .env                   SMS credentials (NOT committed - see .env.sample)
 ├── .env.sample            Environment template (reference)
 ├── recipients.csv         Optional saved recipient list
 ├── resources/
 │   ├── message_template.txt   Default SMS template (editable)
-│   └── sample-recipients.csv  Bundled sample data
+│   ├── sample-recipients.csv  Bundled sample data
+│   ├── input/                 Raw CSV imports to be cleaned (gitignored, `.gitkeep` kept)
+│   └── output/                Cleaned CSV exports from the batch cleaner (gitignored, `.gitkeep` kept)
 ├── requirements.txt       Python dependencies
 ├── pytest.ini             Pytest configuration
 ├── tests/                 Automated test suite
@@ -148,6 +152,26 @@ python main.py --test
 python main.py --bulk
 ```
 
+### Batch Cleaner for Raw CSV Exports
+
+Clean every pending raw CSV in `resources/input/` into `resources/output/`:
+
+```bash
+python clean_recipient_batches.py
+```
+
+Clean one specific file:
+
+```bash
+python clean_recipient_batches.py --file "resources/input/your-file.csv"
+```
+
+Optional flags:
+
+- `--force` rebuilds an output even if a cleaned file already exists
+- `--input-dir` scans a different input directory
+- `--output-dir` writes cleaned files to a different output directory
+
 ### Direct Python Usage
 
 ```python
@@ -215,6 +239,26 @@ Upload behavior:
 - Valid cleaned rows can be used immediately as a temporary imported source
 - Saving to `recipients.csv` is optional
 - Duplicate phone numbers are automatically deduplicated (first row kept)
+
+### Clean Raw Call Sheets or Lead Dumps
+
+If you have a larger exported sheet with extra columns, place it in `resources/input/` and run:
+
+```bash
+python clean_recipient_batches.py
+```
+
+What the cleaner does:
+
+- keeps only `contact_number`, `name`, and `email`
+- requires a valid Sri Lankan mobile number
+- removes rows with missing or invalid numbers
+- removes duplicate numbers and keeps the first valid occurrence
+- blanks invalid email values instead of dropping otherwise-valid rows
+- writes `<original-name>_cleaned.csv` into `resources/output/`
+- skips files that already have a cleaned output unless you pass `--force`
+
+This is useful for raw call sheets, CRM exports, and spreadsheet dumps that contain many non-SMS columns.
 
 **Name Handling:**
 
@@ -418,13 +462,13 @@ tail -f logs/sms_sender_*.log
 Run the full suite:
 
 ```bash
-pytest
+python -m pytest
 ```
 
 Run with coverage:
 
 ```bash
-pytest --cov=. --cov-report=term-missing
+python -m pytest --cov=. --cov-report=term-missing
 ```
 
 The suite covers:
@@ -434,11 +478,12 @@ The suite covers:
 - CLI entry points in `main.py`
 - quickstart/menu flows in `quickstart.py`
 - Streamlit app state and recipient workflows
+- batch-cleaning script behavior for pending and one-off CSV imports
 
 Current local verification:
 
-- `85` tests passing
-- `92%` total coverage from `pytest --cov=. --cov-report=term-missing`
+- `103` tests passing
+- `81%` total coverage from `python -m pytest --cov=. --cov-report=term-missing`
 
 ### Quick Test: Web Dashboard
 
@@ -497,6 +542,7 @@ cat .gitignore | grep -E "\.env|venv"  # Should find both
 | **Module not found errors**  | Install dependencies: `pip install -r requirements.txt`             |
 | **".env not found"**         | Create `.env` from `.env.sample` with your credentials              |
 | **No recipients showing**    | Use the bundled Sample source or upload a custom file               |
+| **Cleaner says phone column missing** | Rename or map your phone column to a supported header such as `Phone Number`, `contact_number`, or `mobile` |
 | **API connection failed**    | Check internet, verify SMS credentials in `.env`                    |
 | **SMS not sending**          | Check phone format (07XXXXXXXX for Sri Lanka or full international) |
 | **Port 8501 already in use** | Stop the existing process with `lsof -ti:8501 | xargs kill -9`, or let Streamlit choose the next free port |
@@ -509,6 +555,7 @@ cat .gitignore | grep -E "\.env|venv"  # Should find both
 3. Check reports: `cat reports/sms_report_*.json | python -m json.tool`
 4. Test credentials: `echo $SMS_USERNAME` (should show username)
 5. Verify bundled sample: `head -5 resources/sample-recipients.csv`
+6. Verify pending raw inputs: `find resources/input -maxdepth 1 -name "*.csv"`
 
 ---
 
@@ -631,6 +678,18 @@ Or use a phone-only list:
 ```csv
 contact_number
 07XXXXXXXX
+```
+
+### Clean a Raw Export
+
+```bash
+python clean_recipient_batches.py
+```
+
+For a one-off file:
+
+```bash
+python clean_recipient_batches.py --file "resources/input/your-file.csv"
 ```
 
 ### Change Message

@@ -89,15 +89,20 @@ credentials.json
 secrets.json
 
 # Logs
-logs/
+/logs/
 *.log
 *.log.*
 
 # Reports and outputs
-reports/
-output/
+/reports/
+/output/
 *.json.backup
 *.csv.backup
+resources/input/*
+!resources/input/.gitkeep
+!resources/output/
+resources/output/*
+!resources/output/.gitkeep
 
 # Temporary files
 *.tmp
@@ -222,4 +227,3 @@ coverage.xml
 # !README.md
 # !requirements.txt
 # !recipients.csv (only if it's template/test data)
-
