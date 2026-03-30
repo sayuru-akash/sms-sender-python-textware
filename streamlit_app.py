@@ -501,6 +501,32 @@ def format_report_detail_label(row):
     return f"{prefix}{identity} [{status}]"
 
 
+def get_report_message_content(row):
+    """Return the best available message content for a report row."""
+    message_body = str(row.get("message_body", "") or "")
+    message_preview = str(row.get("message_preview", "") or "")
+
+    if message_body.strip():
+        return {
+            "content": message_body,
+            "is_full_message": True,
+            "note": "",
+        }
+
+    if message_preview.strip():
+        return {
+            "content": message_preview,
+            "is_full_message": False,
+            "note": "This report row does not contain full message_body. It was likely generated before full-message capture was added.",
+        }
+
+    return {
+        "content": "",
+        "is_full_message": False,
+        "note": "No message content was stored for this row.",
+    }
+
+
 def show_status_chips(current_file, recipients_df, env_vars, report_count):
     """Render short status badges below the title."""
     missing_env = [key for key in REQUIRED_ENV_VARS if not env_vars.get(key)]
@@ -1070,39 +1096,45 @@ def render_reports_tab(reports):
             if status_filter != "All":
                 visible_df = details_df[details_df["status"].astype(
                     str) == status_filter]
+            visible_df = visible_df.reset_index(drop=True)
             display_df = build_report_display_df(visible_df)
             st.dataframe(display_df, width="stretch", hide_index=True)
 
+            action_left, action_right = st.columns([1, 1], gap="small")
             csv_filename = selected_report.name.replace(".json", f"_{status_filter.lower()}_rows.csv")
-            st.download_button(
-                "Download CSV",
-                data=visible_df.to_csv(index=False).encode("utf-8"),
-                file_name=csv_filename,
-                mime="text/csv",
-            )
+            with action_left:
+                st.download_button(
+                    "Download CSV",
+                    data=visible_df.to_csv(index=False).encode("utf-8"),
+                    file_name=csv_filename,
+                    mime="text/csv",
+                )
+            with action_right:
+                st.caption(f"{len(visible_df)} row(s) in current view")
 
-            with st.expander("View full message for a row", expanded=False):
+            with st.expander("Inspect row details", expanded=False):
                 row_options = list(range(len(visible_df)))
                 selected_index = st.selectbox(
                     "Recipient row",
                     row_options,
                     format_func=lambda idx: format_report_detail_label(visible_df.iloc[idx].to_dict()),
-                    key="report_detail_row",
+                    key=f"report_detail_row_{selected_report.name}_{status_filter}",
                 )
                 selected_row = visible_df.iloc[selected_index].fillna("").to_dict()
-                message_body = selected_row.get("message_body", "")
-                st.text_area(
-                    "Full message body",
-                    value=message_body,
-                    height=220,
-                    disabled=True,
-                    key="report_message_body_view",
-                )
+                message_data = get_report_message_content(selected_row)
+                st.caption("Message")
+                if message_data["note"]:
+                    st.info(message_data["note"])
+                if message_data["content"]:
+                    st.code(message_data["content"], language=None)
+                else:
+                    st.info("No message content available for this row.")
                 detail_fields = {
                     key: value
                     for key, value in selected_row.items()
                     if key != "message_body"
                 }
+                st.caption("Row metadata")
                 st.json(detail_fields)
 
         st.download_button(

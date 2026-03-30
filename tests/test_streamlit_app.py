@@ -158,6 +158,21 @@ def test_format_report_detail_label_prefers_name_and_iteration():
     assert label == "#3 Alice (94777123456) [success]"
 
 
+def test_get_report_message_content_prefers_full_message_body_and_falls_back_to_preview():
+    full_message = streamlit_app.get_report_message_content(
+        {"message_body": "Full body", "message_preview": "Preview"}
+    )
+    legacy_message = streamlit_app.get_report_message_content(
+        {"message_preview": "Preview only"}
+    )
+
+    assert full_message["content"] == "Full body"
+    assert full_message["is_full_message"] is True
+    assert legacy_message["content"] == "Preview only"
+    assert legacy_message["is_full_message"] is False
+    assert "full-message capture" in legacy_message["note"]
+
+
 def test_ensure_session_state_initializes_draft_from_template(monkeypatch):
     streamlit_app.st.session_state.clear()
     monkeypatch.setattr(streamlit_app, "get_sms_message", lambda: "Template from file")
